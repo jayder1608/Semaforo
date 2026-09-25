@@ -395,6 +395,17 @@ function nextBusinessDay(d){
   while(!isBusinessDay(n)) n.setDate(n.getDate()+1);
   return n;
 }
+function addBusinessDays(d, n){
+  // adds n business days to date d, skipping weekends and Colombia 2026 holidays
+  let result = toDateOnly(d);
+  let remaining = n;
+  while (remaining > 0){
+    result = new Date(result.getTime());
+    result.setDate(result.getDate()+1);
+    if (isBusinessDay(result)) remaining--;
+  }
+  return result;
+}
 function parseWmsDateTime(s){
   if(!s || s === '-' || s === '') return null;
   const iso = String(s).trim().replace(' ','T');
@@ -769,20 +780,23 @@ function compute(){
     let oportunidad = 'Not evaluable';
     let motivo = promesa.reason;
     let diasTranscurridosHoy = null;
-    if (promesa.dias!==null && tiempoRealDias!==null){
-      oportunidad = (tiempoRealDias <= promesa.dias) ? 'On time' : 'Late (delivered)';
-    } else if (tiempoRealDias===null){
+    // the promised days are business days (Mon-Fri, excluding Colombia 2026 holidays):
+    // the real deadline is pickup date + N business days, not a raw calendar-day count.
+    const promisedDeadline = (promesa.dias!==null && fRecogida) ? addBusinessDays(fRecogida, promesa.dias) : null;
+    if (promisedDeadline && fEntrega){
+      oportunidad = (toDateOnly(fEntrega) <= promisedDeadline) ? 'On time' : 'Late (delivered)';
+    } else if (!fEntrega){
       if (!fRecogida){
         motivo = 'No pickup date in Coordinadora';
-      } else if (promesa.dias!==null){
-        // no delivery date yet: compare days elapsed since pickup against today
+      } else if (promisedDeadline){
+        // no delivery date yet: compare today against the business-day deadline
         diasTranscurridosHoy = diffDays(new Date(), fRecogida);
-        if (diasTranscurridosHoy > promesa.dias){
+        if (toDateOnly(new Date()) > promisedDeadline){
           oportunidad = 'Late (in transit)';
-          motivo = `In transit for ${diasTranscurridosHoy} days since pickup, exceeding the ${promesa.dias} promised`;
+          motivo = `In transit since pickup, past the business-day deadline of ${ymd(promisedDeadline)} (${promesa.dias} business day(s) promised, weekends/holidays excluded)`;
         } else {
           oportunidad = 'In transit';
-          motivo = `In transit for ${diasTranscurridosHoy} days since pickup, within the ${promesa.dias} promised`;
+          motivo = `In transit since pickup, within the business-day deadline of ${ymd(promisedDeadline)} (${promesa.dias} business day(s) promised, weekends/holidays excluded)`;
         }
       } else {
         motivo = promesa.reason || 'No promise data';
@@ -799,6 +813,7 @@ function compute(){
       tiempoRealDias,
       diasTranscurridosHoy,
       diasPrometidos: promesa.dias,
+      promisedDeadline,
       aproximado: promesa.approx,
       motivoAprox: motivo,
       oportunidad,
@@ -911,7 +926,7 @@ function renderKpi1(rows){
 function renderKpi2(rows){
   document.getElementById('note-kpi2').textContent =
     `${rows.length.toLocaleString('en-US')} Coordinadora B2C orders in WMS · * = approximate promise`;
-  const head = ['Waybill','Product','Population type','Destination','Destination terminal','Pickup date','Delivery date','Actual days','Promised days','Result','Reason','Coordinadora status','WMS status'];
+  const head = ['Waybill','Product','Population type','Destination','Destination terminal','Pickup date','Delivery date','Actual days (calendar)','Promised (business days)','Deadline (business days)','Result','Reason','Coordinadora status','WMS status'];
   const parts = ['<thead><tr>'+head.map(h=>`<th>${h}</th>`).join('')+'</tr></thead><tbody>'];
   for (const r of rows){
     const cls = r.oportunidad==='On time'?'ok':(r.oportunidad.startsWith('Late')?'bad':'warn');
@@ -925,6 +940,7 @@ function renderKpi2(rows){
       <td>${esc(fmtD(r.fechaEntrega))}</td>
       <td>${r.tiempoRealDias!==null?esc(r.tiempoRealDias):''}</td>
       <td>${r.diasPrometidos!==null?esc(r.diasPrometidos)+(r.aproximado?' *':''):''}</td>
+      <td>${esc(ymd(r.promisedDeadline))}</td>
       <td>${pill(r.oportunidad,cls)}</td>
       <td>${esc(r.motivoAprox)}</td>
       <td>${esc(r.estadoCoordinadora)}</td>
@@ -1065,13 +1081,13 @@ document.getElementById('dl-kpi1').addEventListener('click', async ()=>{
       'Coordinadora Waybill': r.waybill, 'Product': r.producto, 'Population Type': r.tipoPoblacion,
       'Destination': r.destino, 'Destination Terminal': r.termDestino,
       'Pickup Date': fmtD(r.fechaRecogida), 'Delivery Date': fmtD(r.fechaEntrega),
-      'Actual Time (days)': r.tiempoRealDias, 'Days Elapsed Today (if not yet delivered)': r.diasTranscurridosHoy,
-      'Promised Days': r.diasPrometidos,
+      'Actual Time (calendar days)': r.tiempoRealDias, 'Days Elapsed Today (if not yet delivered)': r.diasTranscurridosHoy,
+      'Promised (business days)': r.diasPrometidos, 'Deadline (business days, weekends/holidays excluded)': ymd(r.promisedDeadline),
       'Approximate Promise': r.aproximado ? 'Yes' : 'No', 'Approximation Reason': r.motivoAprox,
       'Result': r.oportunidad, 'Coordinadora Status': r.estadoCoordinadora, 'WMS Status': r.estadoWms,
     }));
     const ws2 = XLSX.utils.json_to_sheet(k2);
-    styleSheet(ws2, k2.length, 15, 12);
+    styleSheet(ws2, k2.length, 16, 13);
     XLSX.utils.book_append_sheet(wb, ws2, 'KPI2 Delivery');
 
     const val = out.validacion.map(r=>({
