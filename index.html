@@ -1,62 +1,65 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>KPI Coordinadora — Alistamiento y Entrega</title>
+<title>Coordinadora KPI — Readiness and Delivery</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
   :root {
-    --bg: #F3F2EE;
+    --bg: #F5F5F7;
     --panel: #FFFFFF;
-    --ink: #14202E;
-    --ink-soft: #55606E;
-    --line: #D9D6CC;
-    --navy: #0F1B2D;
-    --amber: #f84a00;
-    --amber-soft: #fec84b;
+    --ink: #1A1A1A;
+    --ink-soft: #6E6E73;
+    --line: #E2E2E5;
+    --navy: #000000;
+    --amber: #FF6900;
+    --amber-soft: #FFE3D1;
     --good: #2F6B4F;
     --good-bg: #E3EEE6;
-    --bad: #A23B2E;
-    --bad-bg: #F3E1DC;
-    --warn-bg: #FBF0DC;
+    --bad: #C1272D;
+    --bad-bg: #FBE4E4;
+    --warn: #C77700;
+    --warn-bg: #FFF0DC;
     --mono: 'IBM Plex Mono', ui-monospace, monospace;
     --sans: 'IBM Plex Sans', -apple-system, sans-serif;
   }
   :root:not([data-theme="light"]) {
     @media (prefers-color-scheme: dark) {
-      --bg: #12181F;
-      --panel: #1A222C;
-      --ink: #ECEAE3;
-      --ink-soft: #9AA4AE;
-      --line: #2C3540;
-      --navy: #0B121B;
-      --amber: #E0A24F;
-      --amber-soft: #3A2E1A;
+      --bg: #0E0E0F;
+      --panel: #1C1C1E;
+      --ink: #F5F5F7;
+      --ink-soft: #A0A0A5;
+      --line: #2C2C2E;
+      --navy: #000000;
+      --amber: #FF7A1F;
+      --amber-soft: #3A2414;
       --good: #7FBB9C;
       --good-bg: #1C3327;
-      --bad: #E08B7A;
-      --bad-bg: #3A241F;
-      --warn-bg: #3A3220;
+      --bad: #E8968F;
+      --bad-bg: #3D211F;
+      --warn: #F2B94D;
+      --warn-bg: #3A2E12;
     }
   }
   :root[data-theme="dark"] {
-    --bg: #12181F;
-    --panel: #1A222C;
-    --ink: #ECEAE3;
-    --ink-soft: #9AA4AE;
-    --line: #2C3540;
-    --navy: #0B121B;
-    --amber: #E0A24F;
-    --amber-soft: #3A2E1A;
+    --bg: #0E0E0F;
+    --panel: #1C1C1E;
+    --ink: #F5F5F7;
+    --ink-soft: #A0A0A5;
+    --line: #2C2C2E;
+    --navy: #000000;
+    --amber: #FF7A1F;
+    --amber-soft: #3A2414;
     --good: #7FBB9C;
     --good-bg: #1C3327;
-    --bad: #E08B7A;
-    --bad-bg: #3A241F;
-    --warn-bg: #3A3220;
+    --bad: #E8968F;
+    --bad-bg: #3D211F;
+    --warn: #F2B94D;
+    --warn-bg: #3A2E12;
   }
 
   * { box-sizing: border-box; }
@@ -120,7 +123,7 @@
   .runbar { display:flex; align-items:center; gap: 14px; margin-top: 20px; flex-wrap: wrap; }
   button.primary {
     background: var(--amber);
-    color: #241505;
+    color: #FFFFFF;
     border: none;
     padding: 11px 22px;
     font-weight: 600;
@@ -176,7 +179,7 @@
   .pill { display:inline-block; padding: 2px 9px; border-radius: 20px; font-size: 11px; font-weight: 600; font-family: var(--sans); }
   .pill.ok { background: var(--good-bg); color: var(--good); }
   .pill.bad { background: var(--bad-bg); color: var(--bad); }
-  .pill.warn { background: var(--warn-bg); color: var(--amber); }
+  .pill.warn { background: var(--warn-bg); color: var(--warn); }
 
   .tabs { display:flex; gap: 4px; margin-bottom: 14px; border-bottom: 1px solid var(--line); }
   .tab-btn {
@@ -197,48 +200,45 @@
 <body>
 
 <div class="rail">
-  <h1>KPI Coordinadora · Alistamiento &amp; Entrega (B2C)</h1>
-  <div class="sub">cruce WMS · guías Coordinadora · promesa de servicio</div>
+  <h1>Coordinadora KPI · Readiness &amp; Delivery (B2C)</h1>
+  <div class="sub">WMS match · Coordinadora waybills · service promise</div>
 </div>
 
 <main>
 
   <div class="panel">
-    <h2>1 · Cargar archivos</h2>
+    <h2>1 · Upload files</h2>
     <div class="dropzones">
       <div class="dz" id="dz-wms">
-        <label class="title">Reporte WMS (Outbound Goods Report)</label>
-        <div class="hint">Order Time, Outbound Time, Express Company, express waybill number, Status. Acepta .xls (XML) o .xlsx. Archivos grandes pueden tardar unos segundos.</div>
+        <label class="title">WMS Report (Outbound Goods Report)</label>
         <input type="file" id="file-wms" accept=".xls,.xlsx,.xml">
         <div class="status" id="status-wms"></div>
         <div class="progressbar" id="prog-wms"><div class="fill" id="prog-wms-fill"></div></div>
       </div>
       <div class="dz" id="dz-coord">
-        <label class="title">Informe de Negocio (guías Coordinadora)</label>
-        <div class="hint">Codigo remision, Fecha recogida, Fecha entrega, Estado, Producto.</div>
+        <label class="title">Business Report (Coordinadora waybills)</label>
         <input type="file" id="file-coord" accept=".xls,.xlsx">
         <div class="status" id="status-coord"></div>
       </div>
     </div>
-    <div class="note" style="margin-top:10px;">La tabla de tiempos de promesa de servicio ya está integrada en la herramienta (18.546 rutas) — no hace falta cargarla.</div>
 
     <div class="opts">
       <div class="opt-field">
-        <label>Hora de corte alistamiento</label>
+        <label>Readiness cutoff time</label>
         <input type="text" id="cutoffHour" value="14:00">
       </div>
       <div class="opt-field">
-        <label>Festivos aplicados</label>
+        <label>Holidays applied</label>
         <input type="text" value="Colombia 2026 (18)" disabled style="opacity:.7; width:150px;">
       </div>
     </div>
     <div class="assumptions">
-      Supuestos aplicados:<br>
-      · Regla de alistamiento: pedido creado antes de la hora de corte en día hábil → Outbound ese mismo día hábil; si no, día hábil siguiente. Días hábiles = lunes a viernes, excluyendo los 18 festivos oficiales de Colombia 2026.<br>
-      · Rutas sin promesa exacta en la tabla (ciudad no listada bajo su terminal): se aproxima con el promedio de días de ese terminal destino para el mismo tipo de población/producto. Si el terminal no existe en la tabla, se usa el promedio general — ambos casos quedan marcados como <b>Aproximado</b>.
+      Assumptions applied:<br>
+      · Readiness rule: order created before the cutoff time on a business day → Outbound that same business day; otherwise, the next business day. Business days = Monday to Friday, excluding Colombia's 18 official 2026 holidays.<br>
+      · Routes with no exact promise in the table (city not listed under its terminal): approximated with the average days for that destination terminal, same population type/product. If the terminal isn't in the table, the overall average is used — both cases are flagged as <b>Approximate</b>.
     </div>
     <div class="runbar">
-      <button class="primary" id="btnRun" disabled>Procesar y cruzar</button>
+      <button class="primary" id="btnRun" disabled>Process and match</button>
       <div class="runmsg" id="runmsg"></div>
     </div>
   </div>
@@ -249,17 +249,17 @@
 
     <div class="panel">
       <div class="tabs">
-        <button class="tab-btn active" data-tab="kpi1">KPI 1 · Alistamiento</button>
-        <button class="tab-btn" data-tab="kpi2">KPI 2 · Entrega</button>
-        <button class="tab-btn" data-tab="val">Validación de estados</button>
+        <button class="tab-btn active" data-tab="kpi1">KPI 1 · Readiness</button>
+        <button class="tab-btn" data-tab="kpi2">KPI 2 · Delivery</button>
+        <button class="tab-btn" data-tab="val">Status validation</button>
       </div>
 
       <div class="tab-panel active" id="tab-kpi1">
         <div class="tablehead-row">
           <span class="note" id="note-kpi1"></span>
           <div style="display:flex; gap:8px;">
-            <button class="secondary" id="copy-kpi1">Copiar todo (pegar en Excel)</button>
-            <button class="secondary" id="dl-kpi1">Descargar Excel completo (3 hojas)</button>
+            <button class="secondary" id="copy-kpi1">Copy all (paste into Excel)</button>
+            <button class="secondary" id="dl-kpi1">Download full Excel (3 sheets)</button>
           </div>
         </div>
         <div class="tablewrap"><table id="table-kpi1"></table></div>
@@ -268,7 +268,7 @@
       <div class="tab-panel" id="tab-kpi2">
         <div class="tablehead-row">
           <span class="note" id="note-kpi2"></span>
-          <button class="secondary" id="copy-kpi2">Copiar todo (pegar en Excel)</button>
+          <button class="secondary" id="copy-kpi2">Copy all (paste into Excel)</button>
         </div>
         <div class="tablewrap"><table id="table-kpi2"></table></div>
       </div>
@@ -276,7 +276,7 @@
       <div class="tab-panel" id="tab-val">
         <div class="tablehead-row">
           <span class="note" id="note-val"></span>
-          <button class="secondary" id="copy-val">Copiar todo (pegar en Excel)</button>
+          <button class="secondary" id="copy-val">Copy all (paste into Excel)</button>
         </div>
         <div class="tablewrap"><table id="table-val"></table></div>
       </div>
@@ -373,13 +373,13 @@ function parseWmsXmlRows(text, onProgress){
   const parser = new DOMParser();
   const doc = parser.parseFromString(text, 'text/xml');
   const errNode = doc.getElementsByTagName('parsererror')[0];
-  if (errNode) throw new Error('El XML del WMS no se pudo interpretar (parsererror). Verifica que el archivo no esté truncado.');
+  if (errNode) throw new Error('The WMS XML could not be parsed (parsererror). Check that the file is not truncated.');
   const worksheets = doc.getElementsByTagName('Worksheet');
-  if (!worksheets.length) throw new Error('No se encontró ninguna hoja (Worksheet) dentro del archivo WMS.');
+  if (!worksheets.length) throw new Error('No Worksheet was found inside the WMS file.');
   const table = worksheets[0].getElementsByTagName('Table')[0];
-  if (!table) throw new Error('La hoja del WMS no tiene una tabla de datos.');
+  if (!table) throw new Error('The WMS sheet has no data table.');
   const rowEls = table.getElementsByTagName('Row');
-  if (!rowEls.length) throw new Error('La hoja del WMS no tiene filas.');
+  if (!rowEls.length) throw new Error('The WMS sheet has no rows.');
 
   // header (first row)
   const headerCells = rowEls[0].getElementsByTagName('Cell');
@@ -439,7 +439,7 @@ async function parseWmsFile(file, onProgress){
 function readFileAsWorkbook(file){
   return new Promise((resolve,reject)=>{
     const reader = new FileReader();
-    reader.onerror = ()=>reject(new Error('No se pudo leer el archivo'));
+    reader.onerror = ()=>reject(new Error('Could not read the file'));
     reader.onload = function(e){
       const data = new Uint8Array(e.target.result);
       try {
@@ -485,7 +485,7 @@ checkReady();
 
 document.getElementById('file-wms').addEventListener('change', async (e)=>{
   const f = e.target.files[0]; if(!f) return;
-  setStatus('wms','Leyendo '+(f.size/1024/1024).toFixed(1)+' MB...',false);
+  setStatus('wms','Reading '+(f.size/1024/1024).toFixed(1)+' MB...',false);
   const progWrap = document.getElementById('prog-wms');
   const progFill = document.getElementById('prog-wms-fill');
   progWrap.style.display = 'block'; progFill.style.width = '4%';
@@ -495,7 +495,7 @@ document.getElementById('file-wms').addEventListener('change', async (e)=>{
     });
     progFill.style.width = '100%';
     state.wms = rows;
-    setStatus('wms', rows.length.toLocaleString('es-CO')+' filas cargadas', true);
+    setStatus('wms', rows.length.toLocaleString('en-US')+' rows loaded', true);
     setTimeout(()=>{ progWrap.style.display='none'; },600);
   }catch(err){
     console.error(err);
@@ -506,24 +506,24 @@ document.getElementById('file-wms').addEventListener('change', async (e)=>{
 });
 document.getElementById('file-coord').addEventListener('change', async (e)=>{
   const f = e.target.files[0]; if(!f) return;
-  setStatus('coord','Leyendo...',false);
+  setStatus('coord','Reading...',false);
   try{
     const wb = await readFileAsWorkbook(f);
     const rows = firstSheetRows(wb);
     state.coord = rows;
-    setStatus('coord', rows.length.toLocaleString('es-CO')+' filas cargadas', true);
+    setStatus('coord', rows.length.toLocaleString('en-US')+' rows loaded', true);
   }catch(err){ setStatus('coord','Error: '+err.message, false); state.coord=null; }
 });
 
 // ---------- core computation ----------
 function run(){
   const runmsg = document.getElementById('runmsg');
-  runmsg.textContent = 'Procesando...';
+  runmsg.textContent = 'Processing...';
   setTimeout(()=>{
     try {
       const out = compute();
       renderAll(out);
-      runmsg.textContent = 'Listo · '+ new Date().toLocaleTimeString('es-CO');
+      runmsg.textContent = 'Done · '+ new Date().toLocaleTimeString('en-US');
       document.getElementById('resultsSection').style.display = 'block';
       document.getElementById('resultsSection').scrollIntoView({behavior:'smooth'});
     } catch(err){
@@ -553,7 +553,7 @@ function compute(){
     const outboundTime = parseWmsDateTime(get(r,wmsCol,'outboundtime'));
     const pickTime = parseWmsDateTime(get(r,wmsCol,'pickcompletiontime'));
     const deliveredTime = parseWmsDateTime(get(r,wmsCol,'deliveredtime'));
-    let expected = null, cumple = 'Pendiente (sin Outbound)';
+    let expected = null, cumple = 'Pending';
     if (orderTime){
       const dayOk = isBusinessDay(orderTime);
       if (!dayOk){
@@ -564,7 +564,11 @@ function compute(){
       }
     }
     if (outboundTime && expected){
-      cumple = (toDateOnly(outboundTime) <= expected) ? 'Cumple' : 'Incumple';
+      // already dispatched: compare the actual dispatch date against the deadline
+      cumple = (toDateOnly(outboundTime) <= expected) ? 'Compliant' : 'Non-compliant';
+    } else if (!outboundTime && expected){
+      // not dispatched yet: only a real breach once today is already past the deadline
+      cumple = (toDateOnly(new Date()) > expected) ? 'Non-compliant (not dispatched)' : 'Pending';
     }
     const tiempoAlistH = (outboundTime && orderTime) ? (outboundTime-orderTime)/3600000 : null;
     return {
@@ -631,7 +635,7 @@ function compute(){
 
   function lookupDias(termOrigenRaw, termDestinoRaw, ciudadRaw, tipoRaw, productoRaw){
     const prodCode = PRODUCT_MAP[normHeader(productoRaw)];
-    if (!prodCode) return {dias:null, approx:false, reason:'Producto sin mapeo'};
+    if (!prodCode) return {dias:null, approx:false, reason:'Unmapped product'};
     const tOrigenCode = stripTerminalPrefix(termOrigenRaw||'');
     const tDestinoCode = stripTerminalPrefix(termDestinoRaw||'');
     const ciudadBase = stripDept(ciudadRaw||'');
@@ -644,18 +648,18 @@ function compute(){
     const termKey = [tDestinoCode,tipo,prod].join('|');
     if (terminalAgg.has(termKey)){
       const a = terminalAgg.get(termKey);
-      return {dias: Math.round(a.sum/a.n), approx:true, reason:'Ciudad no listada — promedio del terminal'};
+      return {dias: Math.round(a.sum/a.n), approx:true, reason:'City not listed — terminal average'};
     }
 
     const globKey = [tipo,prod].join('|');
     if (globalAgg.has(globKey)){
       const a = globalAgg.get(globKey);
-      return {dias: Math.round(a.sum/a.n), approx:true, reason:'Terminal no encontrado en tabla — promedio general'};
+      return {dias: Math.round(a.sum/a.n), approx:true, reason:'Terminal not found in table — overall average'};
     }
-    return {dias:null, approx:false, reason:'Sin datos de promesa'};
+    return {dias:null, approx:false, reason:'No promise data'};
   }
 
-  // ---- KPI2 + validacion ----
+  // ---- KPI2 + validation ----
   const kpi2 = [];
   const validacion = [];
   let matched = 0;
@@ -668,9 +672,9 @@ function compute(){
         fechaRecogida: null, fechaEntrega: null,
         tiempoRealDias: null, diasTranscurridosHoy: null, diasPrometidos: null,
         aproximado: false,
-        motivoAprox: 'La guía no aparece en el Informe de Negocios de Coordinadora',
-        oportunidad: 'No encontrado en Informe de Negocios',
-        estadoCoordinadora: 'No encontrado en Informe de Negocios',
+        motivoAprox: "This waybill doesn't appear in Coordinadora's Business Report",
+        oportunidad: 'Not found in Business Report',
+        estadoCoordinadora: 'Not found in Business Report',
         estadoWms: w.status,
       });
       continue;
@@ -680,26 +684,26 @@ function compute(){
     const fEntrega = c.fechaEntrega instanceof Date ? c.fechaEntrega : null;
     const tiempoRealDias = diffDays(fEntrega, fRecogida);
     const promesa = lookupDias(c.termOrigen, c.termDestino, c.destino, c.tipoPoblacion, c.producto);
-    let oportunidad = 'Sin evaluar';
+    let oportunidad = 'Not evaluable';
     let motivo = promesa.reason;
     let diasTranscurridosHoy = null;
     if (promesa.dias!==null && tiempoRealDias!==null){
-      oportunidad = (tiempoRealDias <= promesa.dias) ? 'Oportuna' : 'Tardia';
+      oportunidad = (tiempoRealDias <= promesa.dias) ? 'On time' : 'Late';
     } else if (tiempoRealDias===null){
       if (!fRecogida){
-        motivo = 'Sin fecha de recogida en Coordinadora';
+        motivo = 'No pickup date in Coordinadora';
       } else if (promesa.dias!==null){
-        // aun no hay fecha de entrega: comparar dias transcurridos desde la recogida contra hoy
+        // no delivery date yet: compare days elapsed since pickup against today
         diasTranscurridosHoy = diffDays(new Date(), fRecogida);
         if (diasTranscurridosHoy > promesa.dias){
-          oportunidad = 'Tardia (en transito)';
-          motivo = `En tránsito ${diasTranscurridosHoy} días desde recogida, supera los ${promesa.dias} prometidos`;
+          oportunidad = 'Late (in transit)';
+          motivo = `In transit for ${diasTranscurridosHoy} days since pickup, exceeding the ${promesa.dias} promised`;
         } else {
-          oportunidad = 'En transito';
-          motivo = `En tránsito ${diasTranscurridosHoy} días desde recogida, dentro de los ${promesa.dias} prometidos`;
+          oportunidad = 'In transit';
+          motivo = `In transit for ${diasTranscurridosHoy} days since pickup, within the ${promesa.dias} promised`;
         }
       } else {
-        motivo = promesa.reason || 'Sin datos de promesa';
+        motivo = promesa.reason || 'No promise data';
       }
     }
     kpi2.push({
@@ -747,37 +751,37 @@ function renderAll(out){
 }
 
 function renderSummary(out){
-  const cumple = out.kpi1.filter(r=>r.cumpleAlistamiento==='Cumple').length;
-  const incumple = out.kpi1.filter(r=>r.cumpleAlistamiento==='Incumple').length;
+  const cumple = out.kpi1.filter(r=>r.cumpleAlistamiento==='Compliant').length;
+  const incumple = out.kpi1.filter(r=>r.cumpleAlistamiento.startsWith('Non-compliant')).length;
   const pendiente = out.kpi1.length - cumple - incumple;
   const evaluados1 = cumple+incumple;
   const pctCumple = evaluados1 ? Math.round(1000*cumple/evaluados1)/10 : 0;
 
-  const evaluablesKpi2 = out.kpi2.filter(r=>r.oportunidad==='Oportuna'||r.oportunidad.startsWith('Tardia'));
-  const oportunas = evaluablesKpi2.filter(r=>r.oportunidad==='Oportuna').length;
-  const tardias = evaluablesKpi2.filter(r=>r.oportunidad.startsWith('Tardia')).length;
+  const evaluablesKpi2 = out.kpi2.filter(r=>r.oportunidad==='On time'||r.oportunidad.startsWith('Late'));
+  const oportunas = evaluablesKpi2.filter(r=>r.oportunidad==='On time').length;
+  const tardias = evaluablesKpi2.filter(r=>r.oportunidad.startsWith('Late')).length;
   const pctOportuna = evaluablesKpi2.length ? Math.round(1000*oportunas/evaluablesKpi2.length)/10 : 0;
   const aproximados = out.kpi2.filter(r=>r.aproximado).length;
 
   const html = `
     <div class="card ${pctCumple>=90?'good':(pctCumple<75?'bad':'')}">
-      <div class="label">KPI1 · Cumplimiento alistamiento</div>
+      <div class="label">KPI1 · Readiness compliance</div>
       <div class="big">${pctCumple}%</div>
-      <div class="detail">${cumple.toLocaleString('es-CO')} cumple / ${incumple.toLocaleString('es-CO')} incumple / ${pendiente.toLocaleString('es-CO')} pendiente</div>
+      <div class="detail">${cumple.toLocaleString('en-US')} compliant / ${incumple.toLocaleString('en-US')} non-compliant / ${pendiente.toLocaleString('en-US')} pending</div>
     </div>
     <div class="card ${pctOportuna>=90?'good':(pctOportuna<75?'bad':'')}">
-      <div class="label">KPI2 · Entregas oportunas</div>
+      <div class="label">KPI2 · On-time deliveries</div>
       <div class="big">${pctOportuna}%</div>
-      <div class="detail">${oportunas.toLocaleString('es-CO')} oportunas / ${tardias.toLocaleString('es-CO')} tardías · ${aproximados.toLocaleString('es-CO')} con promesa aproximada</div>
+      <div class="detail">${oportunas.toLocaleString('en-US')} on time / ${tardias.toLocaleString('en-US')} late · ${aproximados.toLocaleString('en-US')} with approximate promise</div>
     </div>
     <div class="card">
-      <div class="label">Cruce WMS ↔ Coordinadora</div>
-      <div class="big">${out.matched.toLocaleString('es-CO')}</div>
-      <div class="detail">de ${out.totalWmsC.toLocaleString('es-CO')} pedidos Coordinadora B2C · ${out.noMatch.toLocaleString('es-CO')} no encontrados en Informe de Negocios</div>
+      <div class="label">WMS ↔ Coordinadora match</div>
+      <div class="big">${out.matched.toLocaleString('en-US')}</div>
+      <div class="detail">of ${out.totalWmsC.toLocaleString('en-US')} Coordinadora B2C orders · ${out.noMatch.toLocaleString('en-US')} not found in Business Report</div>
     </div>
     <div class="card ${out.validacion.length>0?'bad':'good'}">
-      <div class="label">Validación de estados</div>
-      <div class="big">${out.validacion.length.toLocaleString('es-CO')}</div>
+      <div class="label">Status validation</div>
+      <div class="big">${out.validacion.length.toLocaleString('en-US')}</div>
       <div class="detail">WMS "Delivered" vs Coordinadora "Entregada"</div>
     </div>
   `;
@@ -788,11 +792,11 @@ function fmtD(d){ return d ? fmtDate(d) : ''; }
 
 function renderKpi1(rows){
   document.getElementById('note-kpi1').textContent =
-    `${rows.length.toLocaleString('es-CO')} pedidos Coordinadora B2C`;
-  const head = ['Pedido','Producto','Cant.','Ciudad','Creación (Order Time)','Despacho (Outbound Time)','Fecha límite esperada','Tiempo alistamiento (h)','Cumple regla'];
+    `${rows.length.toLocaleString('en-US')} Coordinadora B2C orders`;
+  const head = ['Order','Product','Qty.','City','Created (Order Time)','Dispatched (Outbound Time)','Expected deadline','Readiness time (h)','Meets rule'];
   const parts = ['<thead><tr>'+head.map(h=>`<th>${h}</th>`).join('')+'</tr></thead><tbody>'];
   for (const r of rows){
-    const cls = r.cumpleAlistamiento==='Cumple'?'ok':(r.cumpleAlistamiento==='Incumple'?'bad':'warn');
+    const cls = r.cumpleAlistamiento==='Compliant'?'ok':(r.cumpleAlistamiento.startsWith('Non-compliant')?'bad':'warn');
     parts.push(`<tr class="row-${cls}">
       <td>${r.packageOrder||''}</td>
       <td>${r.productName||''}</td>
@@ -811,11 +815,11 @@ function renderKpi1(rows){
 
 function renderKpi2(rows){
   document.getElementById('note-kpi2').textContent =
-    `${rows.length.toLocaleString('es-CO')} pedidos Coordinadora B2C en WMS · * = promesa aproximada`;
-  const head = ['Guía','Producto','Tipo Población','Destino','Terminal destino','Fecha recogida','Fecha entrega','Días reales','Días prometidos','Resultado','Motivo','Estado Coordinadora','Estado WMS'];
+    `${rows.length.toLocaleString('en-US')} Coordinadora B2C orders in WMS · * = approximate promise`;
+  const head = ['Waybill','Product','Population type','Destination','Destination terminal','Pickup date','Delivery date','Actual days','Promised days','Result','Reason','Coordinadora status','WMS status'];
   const parts = ['<thead><tr>'+head.map(h=>`<th>${h}</th>`).join('')+'</tr></thead><tbody>'];
   for (const r of rows){
-    const cls = r.oportunidad==='Oportuna'?'ok':(r.oportunidad.startsWith('Tardia')?'bad':'warn');
+    const cls = r.oportunidad==='On time'?'ok':(r.oportunidad.startsWith('Late')?'bad':'warn');
     parts.push(`<tr class="row-${cls}">
       <td>${r.waybill}</td>
       <td>${r.producto||''}</td>
@@ -838,8 +842,8 @@ function renderKpi2(rows){
 
 function renderVal(rows, matched){
   document.getElementById('note-val').textContent =
-    `${rows.length.toLocaleString('es-CO')} discrepancias de ${matched.toLocaleString('es-CO')} pedidos cruzados`;
-  const head = ['Guía','Pedido WMS','Estado WMS','Estado Coordinadora'];
+    `${rows.length.toLocaleString('en-US')} mismatches out of ${matched.toLocaleString('en-US')} matched orders`;
+  const head = ['Waybill','WMS order','WMS status','Coordinadora status'];
   const parts = ['<thead><tr>'+head.map(h=>`<th>${h}</th>`).join('')+'</tr></thead><tbody>'];
   for (const r of rows){
     parts.push(`<tr><td>${r.waybill}</td><td>${r.packageOrder||''}</td><td>${pill(r.estadoWms,'warn')}</td><td>${pill(r.estadoCoordinadora,'warn')}</td></tr>`);
@@ -870,7 +874,7 @@ async function copyText(text, btn){
   const orig = btn.textContent;
   try{
     await navigator.clipboard.writeText(text);
-    btn.textContent = 'Copiado ✓';
+    btn.textContent = 'Copied ✓';
   }catch(err){
     try{
       const ta = document.createElement('textarea');
@@ -878,9 +882,9 @@ async function copyText(text, btn){
       document.body.appendChild(ta); ta.select();
       document.execCommand('copy');
       document.body.removeChild(ta);
-      btn.textContent = 'Copiado ✓';
+      btn.textContent = 'Copied ✓';
     }catch(err2){
-      alert('No se pudo copiar automáticamente. Selecciona la tabla manualmente y usa Ctrl+C.');
+      alert('Could not copy automatically. Select the table manually and use Ctrl+C.');
     }
   }
   setTimeout(()=>{ btn.textContent = orig; }, 1800);
@@ -888,7 +892,7 @@ async function copyText(text, btn){
 
 document.getElementById('copy-kpi1').addEventListener('click', ()=>{
   const out = window.__lastResults; if(!out) return;
-  const headers = ['Pedido','DN Number','Producto','Cantidad','Ciudad','Estado WMS','Fecha creación','Fecha preparación (pick)','Fecha despacho (Outbound)','Fecha límite esperada','Tiempo alistamiento (h)','Cumple regla alistamiento'];
+  const headers = ['Order','DN Number','Product','Quantity','City','WMS Status','Created date','Pick date','Dispatch date (Outbound)','Expected deadline','Readiness time (h)','Meets readiness rule'];
   const rows2d = out.kpi1.map(r=>[
     r.packageOrder, r.dnNumber, r.productName, r.qty, r.city, r.status,
     fmtD(r.orderTime), fmtD(r.pickTime), fmtD(r.outboundTime), ymd(r.expectedOutboundDate),
@@ -898,17 +902,17 @@ document.getElementById('copy-kpi1').addEventListener('click', ()=>{
 });
 document.getElementById('copy-kpi2').addEventListener('click', ()=>{
   const out = window.__lastResults; if(!out) return;
-  const headers = ['Guía Coordinadora','Producto','Tipo Población','Destino','Terminal destino','Fecha recogida','Fecha entrega','Tiempo real (días)','Días transcurridos hoy','Días prometidos','Promesa aproximada','Motivo','Resultado','Estado Coordinadora','Estado WMS'];
+  const headers = ['Coordinadora Waybill','Product','Population Type','Destination','Destination Terminal','Pickup Date','Delivery Date','Actual Time (days)','Days Elapsed Today','Promised Days','Approximate Promise','Reason','Result','Coordinadora Status','WMS Status'];
   const rows2d = out.kpi2.map(r=>[
     r.waybill, r.producto, r.tipoPoblacion, r.destino, r.termDestino,
     fmtD(r.fechaRecogida), fmtD(r.fechaEntrega), r.tiempoRealDias, r.diasTranscurridosHoy, r.diasPrometidos,
-    r.aproximado?'Sí':'No', r.motivoAprox, r.oportunidad, r.estadoCoordinadora, r.estadoWms
+    r.aproximado?'Yes':'No', r.motivoAprox, r.oportunidad, r.estadoCoordinadora, r.estadoWms
   ]);
   copyText(toTSV(headers, rows2d), document.getElementById('copy-kpi2'));
 });
 document.getElementById('copy-val').addEventListener('click', ()=>{
   const out = window.__lastResults; if(!out) return;
-  const headers = ['Guía','Pedido WMS','Estado WMS','Estado Coordinadora'];
+  const headers = ['Waybill','WMS Order','WMS Status','Coordinadora Status'];
   const rows2d = out.validacion.map(r=>[r.waybill, r.packageOrder, r.estadoWms, r.estadoCoordinadora]);
   copyText(toTSV(headers, rows2d), document.getElementById('copy-val'));
 });
@@ -919,47 +923,47 @@ document.getElementById('dl-kpi1').addEventListener('click', async ()=>{
   if (!out) return;
   const btn = document.getElementById('dl-kpi1');
   const orig = btn.textContent;
-  btn.textContent = 'Generando...'; btn.disabled = true;
+  btn.textContent = 'Generating...'; btn.disabled = true;
   try{
     const wb = XLSX.utils.book_new();
 
     const k1 = out.kpi1.map(r=>({
-      'Pedido': r.packageOrder, 'DN Number': r.dnNumber, 'Producto': r.productName, 'Cantidad': r.qty,
-      'Ciudad': r.city, 'Estado WMS': r.status,
-      'Fecha creación': fmtD(r.orderTime), 'Fecha preparación (pick)': fmtD(r.pickTime),
-      'Fecha despacho (Outbound)': fmtD(r.outboundTime), 'Fecha límite esperada': ymd(r.expectedOutboundDate),
-      'Tiempo alistamiento (h)': r.tiempoAlistamientoH!==null?Number(r.tiempoAlistamientoH.toFixed(2)):null,
-      'Cumple regla alistamiento': r.cumpleAlistamiento,
+      'Order': r.packageOrder, 'DN Number': r.dnNumber, 'Product': r.productName, 'Quantity': r.qty,
+      'City': r.city, 'WMS Status': r.status,
+      'Created Date': fmtD(r.orderTime), 'Pick Date': fmtD(r.pickTime),
+      'Dispatch Date (Outbound)': fmtD(r.outboundTime), 'Expected Deadline': ymd(r.expectedOutboundDate),
+      'Readiness Time (h)': r.tiempoAlistamientoH!==null?Number(r.tiempoAlistamientoH.toFixed(2)):null,
+      'Meets Readiness Rule': r.cumpleAlistamiento,
     }));
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(k1), 'KPI1 Alistamiento');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(k1), 'KPI1 Readiness');
 
     const k2 = out.kpi2.map(r=>({
-      'Guía Coordinadora': r.waybill, 'Producto': r.producto, 'Tipo Población': r.tipoPoblacion,
-      'Destino': r.destino, 'Terminal destino': r.termDestino,
-      'Fecha recogida': fmtD(r.fechaRecogida), 'Fecha entrega': fmtD(r.fechaEntrega),
-      'Tiempo real (días)': r.tiempoRealDias, 'Días transcurridos hoy (si aún no entregado)': r.diasTranscurridosHoy,
-      'Días prometidos': r.diasPrometidos,
-      'Promesa aproximada': r.aproximado ? 'Sí' : 'No', 'Motivo aproximación': r.motivoAprox,
-      'Resultado': r.oportunidad, 'Estado Coordinadora': r.estadoCoordinadora, 'Estado WMS': r.estadoWms,
+      'Coordinadora Waybill': r.waybill, 'Product': r.producto, 'Population Type': r.tipoPoblacion,
+      'Destination': r.destino, 'Destination Terminal': r.termDestino,
+      'Pickup Date': fmtD(r.fechaRecogida), 'Delivery Date': fmtD(r.fechaEntrega),
+      'Actual Time (days)': r.tiempoRealDias, 'Days Elapsed Today (if not yet delivered)': r.diasTranscurridosHoy,
+      'Promised Days': r.diasPrometidos,
+      'Approximate Promise': r.aproximado ? 'Yes' : 'No', 'Approximation Reason': r.motivoAprox,
+      'Result': r.oportunidad, 'Coordinadora Status': r.estadoCoordinadora, 'WMS Status': r.estadoWms,
     }));
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(k2), 'KPI2 Entrega');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(k2), 'KPI2 Delivery');
 
     const val = out.validacion.map(r=>({
-      'Guía': r.waybill, 'Pedido WMS': r.packageOrder, 'Estado WMS': r.estadoWms, 'Estado Coordinadora': r.estadoCoordinadora,
+      'Waybill': r.waybill, 'WMS Order': r.packageOrder, 'WMS Status': r.estadoWms, 'Coordinadora Status': r.estadoCoordinadora,
     }));
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(val), 'Validacion Estados');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(val), 'Status Validation');
 
     const wbout = XLSX.write(wb, {bookType:'xlsx', type:'array'});
     const blob = new Blob([wbout], {type:'application/octet-stream'});
 
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = 'kpi_coordinadora_resultado.xlsx';
+    a.href = url; a.download = 'coordinadora_kpi_results.xlsx';
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     setTimeout(()=>URL.revokeObjectURL(url), 2000);
   } catch(err){
     console.error(err);
-    alert('No se pudo generar la descarga: '+err.message);
+    alert('Could not generate the download: '+err.message);
   } finally {
     btn.textContent = orig; btn.disabled = false;
   }
