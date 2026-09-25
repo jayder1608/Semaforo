@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
 <style>
   :root {
     --bg: #F5F5F7;
@@ -191,6 +191,15 @@
   .tab-panel.active { display:block; }
 
   .tablehead-row { display:flex; justify-content: space-between; align-items:center; margin-bottom: 10px; flex-wrap:wrap; gap: 8px;}
+  .filterbar { display:flex; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+  .filterbar input[type=text] {
+    flex: 1; min-width: 220px; font-family: var(--sans); font-size: 13px;
+    padding: 8px 10px; border: 1px solid var(--line); border-radius: 2px; background: var(--panel); color: var(--ink);
+  }
+  .filterbar select {
+    font-family: var(--sans); font-size: 13px; padding: 8px 10px; border: 1px solid var(--line);
+    border-radius: 2px; background: var(--panel); color: var(--ink);
+  }
   .note { font-size: 12px; color: var(--ink-soft); font-family: var(--mono); }
 
   #resultsSection { display:none; }
@@ -258,9 +267,18 @@
         <div class="tablehead-row">
           <span class="note" id="note-kpi1"></span>
           <div style="display:flex; gap:8px;">
-            <button class="secondary" id="copy-kpi1">Copy all (paste into Excel)</button>
             <button class="secondary" id="dl-kpi1">Download full Excel (3 sheets)</button>
           </div>
+        </div>
+        <div class="filterbar">
+          <input type="text" id="search-kpi1" placeholder="Search order, city, product, waybill...">
+          <select id="filter-kpi1-status">
+            <option value="">All statuses</option>
+            <option value="Compliant">Compliant</option>
+            <option value="Non-compliant">Non-compliant</option>
+            <option value="Non-compliant (not dispatched)">Non-compliant (not dispatched)</option>
+            <option value="Pending">Pending</option>
+          </select>
         </div>
         <div class="tablewrap"><table id="table-kpi1"></table></div>
       </div>
@@ -268,7 +286,18 @@
       <div class="tab-panel" id="tab-kpi2">
         <div class="tablehead-row">
           <span class="note" id="note-kpi2"></span>
-          <button class="secondary" id="copy-kpi2">Copy all (paste into Excel)</button>
+        </div>
+        <div class="filterbar">
+          <input type="text" id="search-kpi2" placeholder="Search waybill, destination, terminal...">
+          <select id="filter-kpi2-status">
+            <option value="">All results</option>
+            <option value="On time">On time</option>
+            <option value="Late (delivered)">Late (delivered)</option>
+            <option value="Late (in transit)">Late (in transit)</option>
+            <option value="In transit">In transit</option>
+            <option value="Not evaluable">Not evaluable</option>
+            <option value="Not found in Business Report">Not found in Business Report</option>
+          </select>
         </div>
         <div class="tablewrap"><table id="table-kpi2"></table></div>
       </div>
@@ -276,7 +305,15 @@
       <div class="tab-panel" id="tab-val">
         <div class="tablehead-row">
           <span class="note" id="note-val"></span>
-          <button class="secondary" id="copy-val">Copy all (paste into Excel)</button>
+        </div>
+        <div class="filterbar">
+          <input type="text" id="search-val" placeholder="Search waybill, order...">
+          <select id="filter-val-status">
+            <option value="">All</option>
+            <option value="Discrepancy">Discrepancy</option>
+            <option value="In progress">In progress</option>
+            <option value="Match (delivered)">Match (delivered)</option>
+          </select>
         </div>
         <div class="tablewrap"><table id="table-val"></table></div>
       </div>
@@ -343,7 +380,7 @@ function parseWmsDateTime(s){
 }
 function normText(s){
   if (s===null || s===undefined) return '';
-  return String(s).trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ');
+  return String(s).trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/-/g,' ').replace(/\s+/g,' ').trim();
 }
 function stripDept(cityDestino){
   return normText(String(cityDestino).replace(/\s*\([^)]*\)\s*$/, ''));
@@ -606,6 +643,8 @@ function compute(){
   }
   // ---- build promesa lookups ----
   const exactMap = new Map();
+  const cityAgg = new Map();
+  const cityProdAgg = new Map();
   const terminalAgg = new Map();
   const globalAgg = new Map();
 
@@ -623,6 +662,14 @@ function compute(){
 
     const exactKey = [tOrigenCode,tDestinoCode,ciudadBase,tipo,prod].join('|');
     if (!exactMap.has(exactKey)) exactMap.set(exactKey, dias);
+
+    const cityKey = [ciudadBase,tipo,prod].join('|');
+    if (!cityAgg.has(cityKey)) cityAgg.set(cityKey,{sum:0,n:0});
+    const ca = cityAgg.get(cityKey); ca.sum+=dias; ca.n+=1;
+
+    const cityProdKey = [ciudadBase,prod].join('|');
+    if (!cityProdAgg.has(cityProdKey)) cityProdAgg.set(cityProdKey,{sum:0,n:0});
+    const cpa = cityProdAgg.get(cityProdKey); cpa.sum+=dias; cpa.n+=1;
 
     const termKey = [tDestinoCode,tipo,prod].join('|');
     if (!terminalAgg.has(termKey)) terminalAgg.set(termKey,{sum:0,n:0});
@@ -644,6 +691,18 @@ function compute(){
 
     const exactKey = [tOrigenCode,tDestinoCode,ciudadBase,tipo,prod].join('|');
     if (exactMap.has(exactKey)) return {dias: exactMap.get(exactKey), approx:false, reason:''};
+
+    const cityKey = [ciudadBase,tipo,prod].join('|');
+    if (cityAgg.has(cityKey)){
+      const a = cityAgg.get(cityKey);
+      return {dias: Math.round(a.sum/a.n), approx:true, reason:'Matched by destination city (different terminal/route in the table)'};
+    }
+
+    const cityProdKey = [ciudadBase,prod].join('|');
+    if (cityProdAgg.has(cityProdKey)){
+      const a = cityProdAgg.get(cityProdKey);
+      return {dias: Math.round(a.sum/a.n), approx:true, reason:'Matched by destination city only (no promise listed for this population type at this city)'};
+    }
 
     const termKey = [tDestinoCode,tipo,prod].join('|');
     if (terminalAgg.has(termKey)){
@@ -688,7 +747,7 @@ function compute(){
     let motivo = promesa.reason;
     let diasTranscurridosHoy = null;
     if (promesa.dias!==null && tiempoRealDias!==null){
-      oportunidad = (tiempoRealDias <= promesa.dias) ? 'On time' : 'Late';
+      oportunidad = (tiempoRealDias <= promesa.dias) ? 'On time' : 'Late (delivered)';
     } else if (tiempoRealDias===null){
       if (!fRecogida){
         motivo = 'No pickup date in Coordinadora';
@@ -726,14 +785,17 @@ function compute(){
 
     const wmsDelivered = normText(w.status) === 'DELIVERED';
     const coordEntregada = normText(c.estado) === 'ENTREGADA';
-    if (wmsDelivered !== coordEntregada){
-      validacion.push({
-        waybill: w.waybill,
-        packageOrder: w.packageOrder,
-        estadoWms: w.status,
-        estadoCoordinadora: c.estado,
-      });
-    }
+    let statusMatch;
+    if (wmsDelivered && coordEntregada) statusMatch = 'Match (delivered)';
+    else if (wmsDelivered !== coordEntregada) statusMatch = 'Discrepancy';
+    else statusMatch = 'In progress';
+    validacion.push({
+      waybill: w.waybill,
+      packageOrder: w.packageOrder,
+      estadoWms: w.status,
+      estadoCoordinadora: c.estado,
+      statusMatch,
+    });
   }
 
   return { kpi1: wmsC, kpi2, validacion, matched, totalWmsC: wmsC.length, noMatch: wmsC.length - matched };
@@ -743,11 +805,11 @@ function compute(){
 function pill(text, cls){ return `<span class="pill ${cls}">${text}</span>`; }
 
 function renderAll(out){
-  renderVal(out.validacion, out.matched);
-  renderSummary(out);
-  renderKpi1(out.kpi1);
-  renderKpi2(out.kpi2);
   window.__lastResults = out;
+  refreshVal();
+  renderSummary(out);
+  refreshKpi1();
+  refreshKpi2();
 }
 
 function renderSummary(out){
@@ -779,10 +841,10 @@ function renderSummary(out){
       <div class="big">${out.matched.toLocaleString('en-US')}</div>
       <div class="detail">of ${out.totalWmsC.toLocaleString('en-US')} Coordinadora B2C orders · ${out.noMatch.toLocaleString('en-US')} not found in Business Report</div>
     </div>
-    <div class="card ${out.validacion.length>0?'bad':'good'}">
+    <div class="card ${out.validacion.filter(r=>r.statusMatch==='Discrepancy').length>0?'bad':'good'}">
       <div class="label">Status validation</div>
-      <div class="big">${out.validacion.length.toLocaleString('en-US')}</div>
-      <div class="detail">WMS "Delivered" vs Coordinadora "Entregada"</div>
+      <div class="big">${out.validacion.filter(r=>r.statusMatch==='Discrepancy').length.toLocaleString('en-US')}</div>
+      <div class="detail">discrepancies out of ${out.validacion.length.toLocaleString('en-US')} matched orders compared</div>
     </div>
   `;
   document.getElementById('summaryCards').innerHTML = html;
@@ -841,16 +903,76 @@ function renderKpi2(rows){
 }
 
 function renderVal(rows, matched){
+  const discCount = rows.filter(r=>r.statusMatch==='Discrepancy').length;
   document.getElementById('note-val').textContent =
-    `${rows.length.toLocaleString('en-US')} mismatches out of ${matched.toLocaleString('en-US')} matched orders`;
-  const head = ['Waybill','WMS order','WMS status','Coordinadora status'];
+    `${rows.length.toLocaleString('en-US')} matched orders shown (${discCount.toLocaleString('en-US')} discrepancies) out of ${matched.toLocaleString('en-US')} total matched`;
+  const head = ['Waybill','WMS order','WMS status','Coordinadora status','Comparison'];
   const parts = ['<thead><tr>'+head.map(h=>`<th>${h}</th>`).join('')+'</tr></thead><tbody>'];
   for (const r of rows){
-    parts.push(`<tr><td>${r.waybill}</td><td>${r.packageOrder||''}</td><td>${pill(r.estadoWms,'warn')}</td><td>${pill(r.estadoCoordinadora,'warn')}</td></tr>`);
+    const cls = r.statusMatch==='Match (delivered)'?'ok':(r.statusMatch==='Discrepancy'?'bad':'warn');
+    parts.push(`<tr class="row-${cls}"><td>${r.waybill}</td><td>${r.packageOrder||''}</td><td>${r.estadoWms||''}</td><td>${r.estadoCoordinadora||''}</td><td>${pill(r.statusMatch,cls)}</td></tr>`);
   }
   parts.push('</tbody>');
   document.getElementById('table-val').innerHTML = parts.join('');
 }
+
+// ---------- on-page filters ----------
+function getEl(id){ return document.getElementById(id); }
+
+function refreshKpi1(){
+  const out = window.__lastResults;
+  if (!out){ renderKpi1([]); return; }
+  const q = (getEl('search-kpi1').value||'').toLowerCase().trim();
+  const st = getEl('filter-kpi1-status').value;
+  const rows = out.kpi1.filter(r=>{
+    if (st && r.cumpleAlistamiento !== st) return false;
+    if (q){
+      const hay = [r.packageOrder,r.productName,r.city,r.waybill,r.dnNumber].join(' ').toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+  renderKpi1(rows);
+}
+
+function refreshKpi2(){
+  const out = window.__lastResults;
+  if (!out){ renderKpi2([]); return; }
+  const q = (getEl('search-kpi2').value||'').toLowerCase().trim();
+  const st = getEl('filter-kpi2-status').value;
+  const rows = out.kpi2.filter(r=>{
+    if (st && r.oportunidad !== st) return false;
+    if (q){
+      const hay = [r.waybill,r.producto,r.destino,r.termDestino,r.tipoPoblacion].join(' ').toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+  renderKpi2(rows);
+}
+
+function refreshVal(){
+  const out = window.__lastResults;
+  if (!out){ renderVal([],0); return; }
+  const q = (getEl('search-val').value||'').toLowerCase().trim();
+  const st = getEl('filter-val-status').value;
+  const rows = out.validacion.filter(r=>{
+    if (st && r.statusMatch !== st) return false;
+    if (q){
+      const hay = [r.waybill,r.packageOrder,r.estadoWms,r.estadoCoordinadora].join(' ').toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+  renderVal(rows, out.matched);
+}
+
+getEl('search-kpi1').addEventListener('input', refreshKpi1);
+getEl('filter-kpi1-status').addEventListener('change', refreshKpi1);
+getEl('search-kpi2').addEventListener('input', refreshKpi2);
+getEl('filter-kpi2-status').addEventListener('change', refreshKpi2);
+getEl('filter-val-status').addEventListener('change', refreshVal);
+getEl('search-val').addEventListener('input', refreshVal);
 
 // ---------- tabs ----------
 document.querySelectorAll('.tab-btn').forEach(btn=>{
@@ -860,61 +982,6 @@ document.querySelectorAll('.tab-btn').forEach(btn=>{
     btn.classList.add('active');
     document.getElementById('tab-'+btn.dataset.tab).classList.add('active');
   });
-});
-
-// ---------- copy-to-clipboard (works for everyone, no download capability needed) ----------
-function tsvEscape(v){
-  if (v===null || v===undefined) return '';
-  return String(v).replace(/\t/g,' ').replace(/\r?\n/g,' ');
-}
-function toTSV(headers, rows2d){
-  return headers.join('\t') + '\n' + rows2d.map(r=>r.map(tsvEscape).join('\t')).join('\n');
-}
-async function copyText(text, btn){
-  const orig = btn.textContent;
-  try{
-    await navigator.clipboard.writeText(text);
-    btn.textContent = 'Copied ✓';
-  }catch(err){
-    try{
-      const ta = document.createElement('textarea');
-      ta.value = text; ta.style.position='fixed'; ta.style.opacity='0';
-      document.body.appendChild(ta); ta.select();
-      document.execCommand('copy');
-      document.body.removeChild(ta);
-      btn.textContent = 'Copied ✓';
-    }catch(err2){
-      alert('Could not copy automatically. Select the table manually and use Ctrl+C.');
-    }
-  }
-  setTimeout(()=>{ btn.textContent = orig; }, 1800);
-}
-
-document.getElementById('copy-kpi1').addEventListener('click', ()=>{
-  const out = window.__lastResults; if(!out) return;
-  const headers = ['Order','DN Number','Product','Quantity','City','WMS Status','Created date','Pick date','Dispatch date (Outbound)','Expected deadline','Readiness time (h)','Meets readiness rule'];
-  const rows2d = out.kpi1.map(r=>[
-    r.packageOrder, r.dnNumber, r.productName, r.qty, r.city, r.status,
-    fmtD(r.orderTime), fmtD(r.pickTime), fmtD(r.outboundTime), ymd(r.expectedOutboundDate),
-    r.tiempoAlistamientoH!==null?r.tiempoAlistamientoH.toFixed(2):'', r.cumpleAlistamiento
-  ]);
-  copyText(toTSV(headers, rows2d), document.getElementById('copy-kpi1'));
-});
-document.getElementById('copy-kpi2').addEventListener('click', ()=>{
-  const out = window.__lastResults; if(!out) return;
-  const headers = ['Coordinadora Waybill','Product','Population Type','Destination','Destination Terminal','Pickup Date','Delivery Date','Actual Time (days)','Days Elapsed Today','Promised Days','Approximate Promise','Reason','Result','Coordinadora Status','WMS Status'];
-  const rows2d = out.kpi2.map(r=>[
-    r.waybill, r.producto, r.tipoPoblacion, r.destino, r.termDestino,
-    fmtD(r.fechaRecogida), fmtD(r.fechaEntrega), r.tiempoRealDias, r.diasTranscurridosHoy, r.diasPrometidos,
-    r.aproximado?'Yes':'No', r.motivoAprox, r.oportunidad, r.estadoCoordinadora, r.estadoWms
-  ]);
-  copyText(toTSV(headers, rows2d), document.getElementById('copy-kpi2'));
-});
-document.getElementById('copy-val').addEventListener('click', ()=>{
-  const out = window.__lastResults; if(!out) return;
-  const headers = ['Waybill','WMS Order','WMS Status','Coordinadora Status'];
-  const rows2d = out.validacion.map(r=>[r.waybill, r.packageOrder, r.estadoWms, r.estadoCoordinadora]);
-  copyText(toTSV(headers, rows2d), document.getElementById('copy-val'));
 });
 
 // ---------- export ----------
@@ -927,6 +994,28 @@ document.getElementById('dl-kpi1').addEventListener('click', async ()=>{
   try{
     const wb = XLSX.utils.book_new();
 
+    function statusColor(v){
+      if (v==='Compliant' || v==='On time' || v==='Match (delivered)') return {bg:'C6EFCE', font:'006100'};
+      if (v && (v.startsWith('Non-compliant') || v.startsWith('Late') || v==='Discrepancy')) return {bg:'FFC7CE', font:'9C0006'};
+      return {bg:'FFEB9C', font:'9C6500'};
+    }
+    const HEADER_STYLE = { fill:{patternType:'solid', fgColor:{rgb:'1F3864'}}, font:{color:{rgb:'FFFFFF'}, bold:true} };
+    function styleSheet(ws, nDataRows, nCols, statusColIndex){
+      for (let c=0;c<nCols;c++){
+        const hAddr = XLSX.utils.encode_cell({r:0,c});
+        if (ws[hAddr]) ws[hAddr].s = HEADER_STYLE;
+      }
+      if (statusColIndex!==null){
+        for (let r=0;r<nDataRows;r++){
+          const addr = XLSX.utils.encode_cell({r:r+1, c:statusColIndex});
+          if (!ws[addr]) continue;
+          const {bg,font} = statusColor(ws[addr].v);
+          ws[addr].s = { fill:{patternType:'solid', fgColor:{rgb:bg}}, font:{color:{rgb:font}, bold:true} };
+        }
+      }
+      ws['!autofilter'] = { ref: XLSX.utils.encode_range({s:{r:0,c:0}, e:{r:nDataRows, c:nCols-1}}) };
+    }
+
     const k1 = out.kpi1.map(r=>({
       'Order': r.packageOrder, 'DN Number': r.dnNumber, 'Product': r.productName, 'Quantity': r.qty,
       'City': r.city, 'WMS Status': r.status,
@@ -935,7 +1024,9 @@ document.getElementById('dl-kpi1').addEventListener('click', async ()=>{
       'Readiness Time (h)': r.tiempoAlistamientoH!==null?Number(r.tiempoAlistamientoH.toFixed(2)):null,
       'Meets Readiness Rule': r.cumpleAlistamiento,
     }));
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(k1), 'KPI1 Readiness');
+    const ws1 = XLSX.utils.json_to_sheet(k1);
+    styleSheet(ws1, k1.length, 12, 11);
+    XLSX.utils.book_append_sheet(wb, ws1, 'KPI Alistamiento');
 
     const k2 = out.kpi2.map(r=>({
       'Coordinadora Waybill': r.waybill, 'Product': r.producto, 'Population Type': r.tipoPoblacion,
@@ -946,12 +1037,17 @@ document.getElementById('dl-kpi1').addEventListener('click', async ()=>{
       'Approximate Promise': r.aproximado ? 'Yes' : 'No', 'Approximation Reason': r.motivoAprox,
       'Result': r.oportunidad, 'Coordinadora Status': r.estadoCoordinadora, 'WMS Status': r.estadoWms,
     }));
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(k2), 'KPI2 Delivery');
+    const ws2 = XLSX.utils.json_to_sheet(k2);
+    styleSheet(ws2, k2.length, 15, 12);
+    XLSX.utils.book_append_sheet(wb, ws2, 'KPI2 Delivery');
 
     const val = out.validacion.map(r=>({
       'Waybill': r.waybill, 'WMS Order': r.packageOrder, 'WMS Status': r.estadoWms, 'Coordinadora Status': r.estadoCoordinadora,
+      'Comparison': r.statusMatch,
     }));
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(val), 'Status Validation');
+    const ws3 = XLSX.utils.json_to_sheet(val);
+    styleSheet(ws3, val.length, 5, 4);
+    XLSX.utils.book_append_sheet(wb, ws3, 'Status Validation');
 
     const wbout = XLSX.write(wb, {bookType:'xlsx', type:'array'});
     const blob = new Blob([wbout], {type:'application/octet-stream'});
