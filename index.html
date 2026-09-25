@@ -1,7 +1,26 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<!--
+  Coordinadora KPI · Readiness & Delivery (B2C)
+  © 2026 Jayder Andrey Cala Rodriguez. All rights reserved.
+  This file and its source code may not be copied, redistributed, or reused
+  without written permission from the author.
+-->
 <meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="
+  default-src 'none';
+  script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net;
+  style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+  font-src https://fonts.gstatic.com;
+  img-src 'self' data:;
+  connect-src 'none';
+  form-action 'none';
+  object-src 'none';
+  base-uri 'none';
+">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex, nofollow">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Coordinadora KPI — Readiness and Delivery</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -321,6 +340,10 @@
   </div>
 
 </main>
+
+<footer style="text-align:center; padding: 24px 20px 40px; font-family: var(--sans); font-size: 11.5px; color: var(--ink-soft);">
+  © 2026 Jayder Andrey Cala Rodriguez. All rights reserved. This tool processes all data locally in your browser; nothing is uploaded to any server.
+</footer>
 
 <script>
 (function(){
@@ -802,7 +825,17 @@ function compute(){
 }
 
 // ---------- rendering ----------
-function pill(text, cls){ return `<span class="pill ${cls}">${text}</span>`; }
+// ---------- security: escape any value that came from an uploaded file before it touches innerHTML ----------
+function esc(v){
+  if (v===null || v===undefined) return '';
+  return String(v)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;');
+}
+function pill(text, cls){ return `<span class="pill ${cls}">${esc(text)}</span>`; }
 
 function renderAll(out){
   window.__lastResults = out;
@@ -860,14 +893,14 @@ function renderKpi1(rows){
   for (const r of rows){
     const cls = r.cumpleAlistamiento==='Compliant'?'ok':(r.cumpleAlistamiento.startsWith('Non-compliant')?'bad':'warn');
     parts.push(`<tr class="row-${cls}">
-      <td>${r.packageOrder||''}</td>
-      <td>${r.productName||''}</td>
-      <td>${r.qty||''}</td>
-      <td>${r.city||''}</td>
-      <td>${fmtD(r.orderTime)}</td>
-      <td>${fmtD(r.outboundTime)}</td>
-      <td>${ymd(r.expectedOutboundDate)||''}</td>
-      <td>${r.tiempoAlistamientoH!==null?r.tiempoAlistamientoH.toFixed(1):''}</td>
+      <td>${esc(r.packageOrder)}</td>
+      <td>${esc(r.productName)}</td>
+      <td>${esc(r.qty)}</td>
+      <td>${esc(r.city)}</td>
+      <td>${esc(fmtD(r.orderTime))}</td>
+      <td>${esc(fmtD(r.outboundTime))}</td>
+      <td>${esc(ymd(r.expectedOutboundDate))}</td>
+      <td>${r.tiempoAlistamientoH!==null?esc(r.tiempoAlistamientoH.toFixed(1)):''}</td>
       <td>${pill(r.cumpleAlistamiento, cls)}</td>
     </tr>`);
   }
@@ -883,19 +916,19 @@ function renderKpi2(rows){
   for (const r of rows){
     const cls = r.oportunidad==='On time'?'ok':(r.oportunidad.startsWith('Late')?'bad':'warn');
     parts.push(`<tr class="row-${cls}">
-      <td>${r.waybill}</td>
-      <td>${r.producto||''}</td>
-      <td>${r.tipoPoblacion||''}</td>
-      <td>${r.destino||''}</td>
-      <td>${r.termDestino||''}</td>
-      <td>${fmtD(r.fechaRecogida)}</td>
-      <td>${fmtD(r.fechaEntrega)}</td>
-      <td>${r.tiempoRealDias!==null?r.tiempoRealDias:''}</td>
-      <td>${r.diasPrometidos!==null?r.diasPrometidos+(r.aproximado?' *':''):''}</td>
+      <td>${esc(r.waybill)}</td>
+      <td>${esc(r.producto)}</td>
+      <td>${esc(r.tipoPoblacion)}</td>
+      <td>${esc(r.destino)}</td>
+      <td>${esc(r.termDestino)}</td>
+      <td>${esc(fmtD(r.fechaRecogida))}</td>
+      <td>${esc(fmtD(r.fechaEntrega))}</td>
+      <td>${r.tiempoRealDias!==null?esc(r.tiempoRealDias):''}</td>
+      <td>${r.diasPrometidos!==null?esc(r.diasPrometidos)+(r.aproximado?' *':''):''}</td>
       <td>${pill(r.oportunidad,cls)}</td>
-      <td>${r.motivoAprox||''}</td>
-      <td>${r.estadoCoordinadora||''}</td>
-      <td>${r.estadoWms||''}</td>
+      <td>${esc(r.motivoAprox)}</td>
+      <td>${esc(r.estadoCoordinadora)}</td>
+      <td>${esc(r.estadoWms)}</td>
     </tr>`);
   }
   parts.push('</tbody>');
@@ -910,7 +943,7 @@ function renderVal(rows, matched){
   const parts = ['<thead><tr>'+head.map(h=>`<th>${h}</th>`).join('')+'</tr></thead><tbody>'];
   for (const r of rows){
     const cls = r.statusMatch==='Match (delivered)'?'ok':(r.statusMatch==='Discrepancy'?'bad':'warn');
-    parts.push(`<tr class="row-${cls}"><td>${r.waybill}</td><td>${r.packageOrder||''}</td><td>${r.estadoWms||''}</td><td>${r.estadoCoordinadora||''}</td><td>${pill(r.statusMatch,cls)}</td></tr>`);
+    parts.push(`<tr class="row-${cls}"><td>${esc(r.waybill)}</td><td>${esc(r.packageOrder)}</td><td>${esc(r.estadoWms)}</td><td>${esc(r.estadoCoordinadora)}</td><td>${pill(r.statusMatch,cls)}</td></tr>`);
   }
   parts.push('</tbody>');
   document.getElementById('table-val').innerHTML = parts.join('');
