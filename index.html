@@ -1461,16 +1461,21 @@ function dedupeByWaybill(list){
   }
   return out;
 }
+function deliveredInBoth(r){
+  // already delivered and the status agrees in WMS and in the Business Report: nothing left to report
+  return normText(r.estadoWms)==='DELIVERED' && normText(r.estadoCoordinadora)==='ENTREGADA';
+}
 function caseOf(r){ return r.fechaEntrega ? 'Delivered late' : 'Not delivered — past deadline'; }
 function getBreachedReport(out){
   return dedupeByWaybill(out.kpi2
     .filter(r => (r.oportunidad==='Late (delivered)' || r.oportunidad==='Late (in transit)')
+              && !deliveredInBoth(r)
               && !out.returnKeys.has(r.waybill) && !isReturnedStatus(r.estadoCoordinadora) && !isClosedStatus(r.estadoCoordinadora))
     .sort((a,b)=> (b.businessDaysLate||0) - (a.businessDaysLate||0)));
 }
 function getNearBreachReport(out){
   return dedupeByWaybill(out.kpi2
-    .filter(r => r.oportunidad.startsWith('At risk'))
+    .filter(r => r.oportunidad.startsWith('At risk') && !deliveredInBoth(r))
     .sort((a,b)=> (a.businessDaysLeft||0) - (b.businessDaysLeft||0)));
 }
 function snapBreach(r){ return {coord:String(r.estadoCoordinadora||''), wms:String(r.estadoWms||''), novedad:String(r.novedad||''), type:caseOf(r)}; }
@@ -1489,7 +1494,7 @@ function reportHist(r){
 }
 function renderRep(rows, total){
   document.getElementById('note-rep').textContent =
-    `${rows.length.toLocaleString('en-US')} shown of ${total.toLocaleString('en-US')} guides to report to Coordinadora (no novelty): red = promise already breached (delivered late or still not delivered past the deadline), yellow = near breach. Closed, returned and WMS-rejected guides are excluded.`;
+    `${rows.length.toLocaleString('en-US')} shown of ${total.toLocaleString('en-US')} guides to report to Coordinadora (no novelty): red = promise already breached (delivered late or still not delivered past the deadline), yellow = near breach. Excluded: guides already delivered in both WMS and the Business Report, closed, returned and WMS-rejected guides.`;
   const head = ['Waybill','WMS order','Destination','Destination terminal','Product','Pickup date','Promised (business days)','Deadline','Delivery date','Business days late','Business days left','Status','Coordinadora status','WMS status','History','First reported','Last change','Change'];
   const parts = ['<thead><tr>'+head.map(h=>`<th>${h}</th>`).join('')+'</tr></thead><tbody>'];
   for (const r of rows){
