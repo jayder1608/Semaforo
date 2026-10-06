@@ -199,6 +199,8 @@
   .pill.ok { background: var(--good-bg); color: var(--good); }
   .pill.bad { background: var(--bad-bg); color: var(--bad); }
   .pill.warn { background: var(--warn-bg); color: var(--warn); }
+  .pill.risk { background: var(--amber-soft); color: var(--amber); }
+  tbody tr.row-risk { background: var(--amber-soft); }
   .pill.neutral { background: var(--line); color: var(--ink-soft); }
   .histbar { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-top:18px; padding-top:14px; border-top:1px dashed var(--line); }
 
@@ -261,6 +263,10 @@
         <label>Holidays applied</label>
         <input type="text" value="Colombia 2026 (18)" disabled style="opacity:.7; width:150px;">
       </div>
+      <div class="opt-field">
+        <label>At-risk window (business days)</label>
+        <input type="number" id="riskWindow" value="1" min="0">
+      </div>
     </div>
     <div class="assumptions">
       Assumptions applied:<br>
@@ -290,6 +296,7 @@
         <button class="tab-btn active" data-tab="kpi1">KPI 1 · Readiness</button>
         <button class="tab-btn" data-tab="kpi2">KPI 2 · Delivery</button>
         <button class="tab-btn" data-tab="val">Status validation</button>
+        <button class="tab-btn" data-tab="rep">Report to Coordinadora</button>
         <button class="tab-btn" data-tab="ret">Return candidates</button>
         <button class="tab-btn" data-tab="track">Returns tracking</button>
       </div>
@@ -298,7 +305,7 @@
         <div class="tablehead-row">
           <span class="note" id="note-kpi1"></span>
           <div style="display:flex; gap:8px;">
-            <button class="secondary" id="dl-kpi1">Download full Excel (5 sheets)</button>
+            <button class="secondary" id="dl-kpi1">Download full Excel (6 sheets)</button>
           </div>
         </div>
         <div class="filterbar">
@@ -325,6 +332,8 @@
             <option value="On time">On time</option>
             <option value="Late (delivered)">Late (delivered)</option>
             <option value="Late (in transit)">Late (in transit)</option>
+            <option value="Late due to novelty">Late due to novelty</option>
+            <option value="At risk (due soon)">At risk (due soon)</option>
             <option value="In transit">In transit</option>
             <option value="Not evaluable">Not evaluable</option>
             <option value="Not found in Business Report">Not found in Business Report</option>
@@ -352,6 +361,26 @@
           </select>
         </div>
         <div class="tablewrap"><table id="table-val"></table></div>
+      </div>
+
+      <div class="tab-panel" id="tab-rep">
+        <div class="tablehead-row">
+          <span class="note" id="note-rep"></span>
+        </div>
+        <div class="filterbar">
+          <input type="text" id="search-rep" placeholder="Search waybill, order, destination, status...">
+          <select id="filter-rep-type">
+            <option value="">Breached + near breach</option>
+            <option value="breach">Breached only (red)</option>
+            <option value="risk">Near breach only (yellow)</option>
+          </select>
+          <select id="filter-rep-hist">
+            <option value="recent">New + changed only</option>
+            <option value="all">All (incl. already reported)</option>
+            <option value="old">Already reported only</option>
+          </select>
+        </div>
+        <div class="tablewrap"><table id="table-rep"></table></div>
       </div>
 
       <div class="tab-panel" id="tab-ret">
@@ -411,7 +440,7 @@ const HOLIDAYS_2026 = new Set([
 ]);
 
 const PRODUCT_MAP = {
-  'paquetes12kl(me)': 'PAQ 1-2',
+  'paquetes12klme': 'PAQ 1-2',
   'paqueteo35kl': 'Paq 3-5K',
   'mercancia': 'Mcia',
   'mercanciaxl': 'Mcia XL',
@@ -685,6 +714,8 @@ document.getElementById('btnRun').addEventListener('click', run);
 function compute(){
   const cutoffStr = document.getElementById('cutoffHour').value.trim() || '14:00';
   const [cutH, cutM] = cutoffStr.split(':').map(x=>parseInt(x,10));
+  const rwRaw = parseInt((document.getElementById('riskWindow')||{}).value, 10);
+  const riskWindow = (isNaN(rwRaw) || rwRaw < 0) ? 1 : rwRaw;
 
   const wmsRows = state.wms, coordRows = state.coord, promesaRows = state.promesa;
   const wmsCol = buildColMap(wmsRows);
@@ -843,7 +874,7 @@ function compute(){
         fechaRecogida: null, fechaEntrega: null,
         tiempoRealDias: null, diasTranscurridosHoy: null, diasPrometidos: null,
         aproximado: false,
-        novedad: '', packageOrder: w.packageOrder, businessDaysLate: null,
+        novedad: '', packageOrder: w.packageOrder, businessDaysLate: null, businessDaysLeft: null,
         motivoAprox: "This waybill doesn't appear in Coordinadora's Business Report",
         oportunidad: 'Not found in Business Report',
         estadoCoordinadora: 'Not found in Business Report',
@@ -863,12 +894,21 @@ function compute(){
     // the real deadline is pickup date + N business days, not a raw calendar-day count.
     const promisedDeadline = (promesa.dias!==null && fRecogida) ? addBusinessDays(fRecogida, promesa.dias) : null;
     let businessDaysLate = null;
+    let businessDaysLeft = null;
     if (promisedDeadline){
       const endRef = fEntrega ? toDateOnly(fEntrega) : toDateOnly(new Date());
       businessDaysLate = endRef > promisedDeadline ? businessDaysBetween(promisedDeadline, endRef) : 0;
     }
     if (promisedDeadline && fEntrega){
-      oportunidad = (toDateOnly(fEntrega) <= promisedDeadline) ? 'On time' : 'Late (delivered)';
+      if (toDateOnly(fEntrega) <= promisedDeadline){
+        oportunidad = 'On time';
+      } else if (c.novedad){
+        // late, but the delay depends on a Coordinadora novelty (address, customer response...): not validated as late
+        oportunidad = 'Late due to novelty';
+        motivo = `Delivered after the business-day deadline of ${ymd(promisedDeadline)}, but Coordinadora reports a novelty: ${c.novedad}`;
+      } else {
+        oportunidad = 'Late (delivered)';
+      }
     } else if (!fEntrega){
       if (!fRecogida){
         motivo = 'No pickup date in Coordinadora';
@@ -876,11 +916,24 @@ function compute(){
         // no delivery date yet: compare today against the business-day deadline
         diasTranscurridosHoy = diffDays(new Date(), fRecogida);
         if (toDateOnly(new Date()) > promisedDeadline){
-          oportunidad = 'Late (in transit)';
-          motivo = `In transit since pickup, past the business-day deadline of ${ymd(promisedDeadline)} (${promesa.dias} business day(s) promised, weekends/holidays excluded)`;
+          if (c.novedad){
+            oportunidad = 'Late due to novelty';
+            motivo = `Past the business-day deadline of ${ymd(promisedDeadline)} (${promesa.dias} business day(s) promised), with a Coordinadora novelty: ${c.novedad}`;
+          } else {
+            oportunidad = 'Late (in transit)';
+            motivo = `In transit since pickup, past the business-day deadline of ${ymd(promisedDeadline)} (${promesa.dias} business day(s) promised, weekends/holidays excluded)`;
+          }
         } else {
-          oportunidad = 'In transit';
-          motivo = `In transit since pickup, within the business-day deadline of ${ymd(promisedDeadline)} (${promesa.dias} business day(s) promised, weekends/holidays excluded)`;
+          const todayD = toDateOnly(new Date());
+          businessDaysLeft = promisedDeadline > todayD ? businessDaysBetween(todayD, promisedDeadline) : 0;
+          const closedOrReturned = isClosedStatus(c.estado) || isReturnedStatus(c.estado) || normText(w.status).includes('REJECT');
+          if (!closedOrReturned && !c.novedad && businessDaysLeft <= riskWindow){
+            oportunidad = 'At risk (due soon)';
+            motivo = `Promise about to be breached: deadline ${ymd(promisedDeadline)} (${businessDaysLeft} business day(s) left, weekends/holidays excluded)`;
+          } else {
+            oportunidad = 'In transit';
+            motivo = `In transit since pickup, within the business-day deadline of ${ymd(promisedDeadline)} (${promesa.dias} business day(s) promised, weekends/holidays excluded)`;
+          }
         }
       } else {
         motivo = promesa.reason || 'No promise data';
@@ -899,6 +952,7 @@ function compute(){
       diasPrometidos: promesa.dias,
       promisedDeadline,
       businessDaysLate,
+      businessDaysLeft,
       novedad: c.novedad,
       packageOrder: w.packageOrder,
       aproximado: promesa.approx,
@@ -1000,6 +1054,7 @@ function renderAll(out){
   refreshKpi2();
   refreshRet();
   refreshTrack();
+  refreshRep();
 }
 
 function renderSummary(out){
@@ -1009,11 +1064,12 @@ function renderSummary(out){
   const evaluados1 = cumple+incumple;
   const pctCumple = evaluados1 ? Math.round(1000*cumple/evaluados1)/10 : 0;
 
-  const evaluablesKpi2 = out.kpi2.filter(r=>r.oportunidad==='On time'||r.oportunidad.startsWith('Late'));
+  const evaluablesKpi2 = out.kpi2.filter(r=>r.oportunidad==='On time'||(r.oportunidad.startsWith('Late') && r.oportunidad!=='Late due to novelty'));
   const oportunas = evaluablesKpi2.filter(r=>r.oportunidad==='On time').length;
-  const tardias = evaluablesKpi2.filter(r=>r.oportunidad.startsWith('Late')).length;
+  const tardias = evaluablesKpi2.filter(r=>r.oportunidad!=='On time').length;
   const pctOportuna = evaluablesKpi2.length ? Math.round(1000*oportunas/evaluablesKpi2.length)/10 : 0;
   const aproximados = out.kpi2.filter(r=>r.aproximado).length;
+  const novLate = out.kpi2.filter(r=>r.oportunidad==='Late due to novelty').length;
   const retTh = getRetThreshold();
   const candList = getReturnCandidates(out);
   const retCand = candList.length;
@@ -1022,6 +1078,12 @@ function renderSummary(out){
   const retPending = pendList.length;
   const retPendNew = pendList.filter(r=>histInfo('returns', r.key, snapRet(r)).state!=='Already reported').length;
   const retInbound = out.returns.length - retPending;
+  const riskList = getNearBreachReport(out);
+  const riskCount = riskList.length;
+  const riskNew = riskList.filter(r=>histInfo('risk', r.waybill, snapRisk(r)).state!=='Already reported').length;
+  const breachList = getBreachedReport(out);
+  const breachCount = breachList.length;
+  const breachNew = breachList.filter(r=>histInfo('breach', r.waybill, snapBreach(r)).state!=='Already reported').length;
 
   const html = `
     <div class="card ${pctCumple>=90?'good':(pctCumple<75?'bad':'')}">
@@ -1032,7 +1094,7 @@ function renderSummary(out){
     <div class="card ${pctOportuna>=90?'good':(pctOportuna<75?'bad':'')}">
       <div class="label">KPI2 · On-time deliveries</div>
       <div class="big">${pctOportuna}%</div>
-      <div class="detail">${oportunas.toLocaleString('en-US')} on time / ${tardias.toLocaleString('en-US')} late · ${aproximados.toLocaleString('en-US')} with approximate promise</div>
+      <div class="detail">${oportunas.toLocaleString('en-US')} on time / ${tardias.toLocaleString('en-US')} late · ${novLate.toLocaleString('en-US')} excluded (late due to novelty) · ${aproximados.toLocaleString('en-US')} with approximate promise</div>
     </div>
     <div class="card">
       <div class="label">WMS ↔ Coordinadora match</div>
@@ -1053,6 +1115,16 @@ function renderSummary(out){
       <div class="label">Returns pending Inbound</div>
       <div class="big">${retPending.toLocaleString('en-US')}</div>
       <div class="detail">${out.returns.length.toLocaleString('en-US')} returned · ${retInbound.toLocaleString('en-US')} already Inbound · ${retPendNew.toLocaleString('en-US')} pending new/changed</div>
+    </div>
+    <div class="card ${riskCount>0?'bad':'good'}">
+      <div class="label">Near breach — to report</div>
+      <div class="big">${riskCount.toLocaleString('en-US')}</div>
+      <div class="detail">undelivered, deadline within the at-risk window, no novelty · ${riskNew.toLocaleString('en-US')} new/changed</div>
+    </div>
+    <div class="card ${breachCount>0?'bad':'good'}">
+      <div class="label">Breached — to report</div>
+      <div class="big">${breachCount.toLocaleString('en-US')}</div>
+      <div class="detail">delivered late or past deadline, no novelty · ${breachNew.toLocaleString('en-US')} new/changed</div>
     </div>
   `;
   document.getElementById('summaryCards').innerHTML = html;
@@ -1086,10 +1158,10 @@ function renderKpi1(rows){
 function renderKpi2(rows){
   document.getElementById('note-kpi2').textContent =
     `${rows.length.toLocaleString('en-US')} Coordinadora B2C orders in WMS · * = approximate promise`;
-  const head = ['Waybill','Product','Population type','Destination','Destination terminal','Pickup date','Delivery date','Actual days (calendar)','Promised (business days)','Deadline (business days)','Business days late','Result','Reason','Novelty (Coordinadora)','Coordinadora status','WMS status'];
+  const head = ['Waybill','Product','Population type','Destination','Destination terminal','Pickup date','Delivery date','Actual days (calendar)','Promised (business days)','Deadline (business days)','Business days late','Business days left','Result','Reason','Novelty (Coordinadora)','Coordinadora status','WMS status'];
   const parts = ['<thead><tr>'+head.map(h=>`<th>${h}</th>`).join('')+'</tr></thead><tbody>'];
   for (const r of rows){
-    const cls = r.oportunidad==='On time'?'ok':(r.oportunidad.startsWith('Late')?'bad':'warn');
+    const cls = r.oportunidad==='On time'?'ok':(r.oportunidad==='Late due to novelty'?'warn':(r.oportunidad.startsWith('Late')?'bad':(r.oportunidad.startsWith('At risk')?'risk':'warn')));
     parts.push(`<tr class="row-${cls}">
       <td>${esc(r.waybill)}</td>
       <td>${esc(r.producto)}</td>
@@ -1102,6 +1174,7 @@ function renderKpi2(rows){
       <td>${r.diasPrometidos!==null?esc(r.diasPrometidos)+(r.aproximado?' *':''):''}</td>
       <td>${esc(ymd(r.promisedDeadline))}</td>
       <td>${r.businessDaysLate!==null?esc(r.businessDaysLate):''}</td>
+      <td>${r.businessDaysLeft!==null && r.businessDaysLeft!==undefined?esc(r.businessDaysLeft):''}</td>
       <td>${pill(r.oportunidad,cls)}</td>
       <td>${esc(r.motivoAprox)}</td>
       <td>${esc(r.novedad)}</td>
@@ -1183,13 +1256,15 @@ function refreshVal(){
 
 // ---------- history (saved in this browser; exportable / importable) ----------
 const HIST_KEY = 'coordinadoraKpiHistoryV1';
-let history = {returns:{}, candidates:{}};
+const HIST_TYPES = ['returns','candidates','breach','risk'];
+function emptyHistory(){ return {returns:{}, candidates:{}, breach:{}, risk:{}}; }
+let history = emptyHistory();
 let storageOk = true;
 function todayStr(){ return ymd(new Date()); }
 function loadHistory(){
   try{
     const t = window.localStorage.getItem(HIST_KEY);
-    if (t){ const h = JSON.parse(t); if (h && h.returns && h.candidates) history = h; }
+    if (t){ const h = JSON.parse(t); if (h && h.returns && h.candidates) history = Object.assign(emptyHistory(), h); }
   }catch(e){ storageOk = false; }
 }
 function saveHistory(){
@@ -1197,7 +1272,7 @@ function saveHistory(){
 }
 function describeSnap(s){
   if (!s) return '';
-  return `Coordinadora: ${s.coord||'—'} · WMS: ${s.wms||'—'}` + (s.novedad ? ` · Novelty: ${s.novedad}` : '');
+  return `Coordinadora: ${s.coord||'—'} · WMS: ${s.wms||'—'}` + (s.novedad ? ` · Novelty: ${s.novedad}` : '') + (s.type ? ` · ${s.type}` : '');
 }
 function snapCand(r){ return {coord:String(r.estadoCoordinadora||''), wms:String(r.estadoWms||''), novedad:String(r.novedad||'')}; }
 function snapRet(r){ return {coord:String(r.estadoCoordinadora||''), wms:String(r.estadoWms||''), novedad:String(r.novedad||''), tracking:String(r.trackingStatus||'')}; }
@@ -1237,17 +1312,20 @@ function applyHistory(out){
   if (chk && !chk.checked) return;
   for (const r of out.returns) upsertHistory('returns', r.key, snapRet(r));
   for (const r of getReturnCandidates(out)) upsertHistory('candidates', r.waybill, snapCand(r));
+  for (const r of getBreachedReport(out)) upsertHistory('breach', r.waybill, snapBreach(r));
+  for (const r of getNearBreachReport(out)) upsertHistory('risk', r.waybill, snapRisk(r));
   saveHistory();
   updateHistNote();
 }
 function updateHistNote(){
   const n1 = Object.keys(history.returns).length, n2 = Object.keys(history.candidates).length;
-  getEl('hist-note').textContent = `History: ${n1} returned guides · ${n2} candidates tracked` + (storageOk ? '' : ' · browser storage unavailable (use Export/Import to keep it)');
+  const n3 = Object.keys(history.breach).length, n4 = Object.keys(history.risk).length;
+  getEl('hist-note').textContent = `History: ${n1} returned · ${n2} return candidates · ${n3} breached · ${n4} near-breach` + (storageOk ? '' : ' · browser storage unavailable (use Export/Import to keep it)');
 }
 function mergeHistory(h){
   if (!h || typeof h !== 'object' || !h.returns || !h.candidates) throw new Error('Not a valid history file');
-  for (const type of ['returns','candidates']){
-    for (const [k, rec] of Object.entries(h[type])){
+  for (const type of HIST_TYPES){
+    for (const [k, rec] of Object.entries(h[type] || {})){
       if (!rec || typeof rec.firstSeen !== 'string' || typeof rec.lastSeen !== 'string' || !Array.isArray(rec.log)) continue;
       const cur = history[type][k];
       if (!cur || rec.lastSeen > cur.lastSeen || (rec.lastSeen === cur.lastSeen && rec.lastChange > cur.lastChange)) history[type][k] = rec;
@@ -1370,9 +1448,91 @@ function refreshTrack(){
   });
   renderTrack(rows, out.returns.length);
 }
+// ---------- reports to send to Coordinadora (no novelty) ----------
+function dedupeByWaybill(list){
+  // several WMS orders can share one waybill: list each guide once, with all its orders
+  const map = new Map(), out = [];
+  for (const r of list){
+    const prev = map.get(r.waybill);
+    if (!prev){ const copy = Object.assign({}, r); map.set(r.waybill, copy); out.push(copy); }
+    else if (r.packageOrder && !String(prev.packageOrder||'').split(', ').includes(String(r.packageOrder))){
+      prev.packageOrder = prev.packageOrder ? prev.packageOrder+', '+r.packageOrder : r.packageOrder;
+    }
+  }
+  return out;
+}
+function caseOf(r){ return r.fechaEntrega ? 'Delivered late' : 'Not delivered — past deadline'; }
+function getBreachedReport(out){
+  return dedupeByWaybill(out.kpi2
+    .filter(r => (r.oportunidad==='Late (delivered)' || r.oportunidad==='Late (in transit)')
+              && !out.returnKeys.has(r.waybill) && !isReturnedStatus(r.estadoCoordinadora) && !isClosedStatus(r.estadoCoordinadora))
+    .sort((a,b)=> (b.businessDaysLate||0) - (a.businessDaysLate||0)));
+}
+function getNearBreachReport(out){
+  return dedupeByWaybill(out.kpi2
+    .filter(r => r.oportunidad.startsWith('At risk'))
+    .sort((a,b)=> (a.businessDaysLeft||0) - (b.businessDaysLeft||0)));
+}
+function snapBreach(r){ return {coord:String(r.estadoCoordinadora||''), wms:String(r.estadoWms||''), novedad:String(r.novedad||''), type:caseOf(r)}; }
+function snapRisk(r){ return {coord:String(r.estadoCoordinadora||''), wms:String(r.estadoWms||''), novedad:String(r.novedad||'')}; }
+
+function reportStatus(r){
+  return r.reportType==='risk' ? 'Near breach' : (r.fechaEntrega ? 'Breached — delivered late' : 'Breached — past deadline');
+}
+function getReportList(out){
+  const b = getBreachedReport(out).map(r=>Object.assign({}, r, {reportType:'breach'}));
+  const n = getNearBreachReport(out).map(r=>Object.assign({}, r, {reportType:'risk'}));
+  return b.concat(n);
+}
+function reportHist(r){
+  return r.reportType==='risk' ? histInfo('risk', r.waybill, snapRisk(r)) : histInfo('breach', r.waybill, snapBreach(r));
+}
+function renderRep(rows, total){
+  document.getElementById('note-rep').textContent =
+    `${rows.length.toLocaleString('en-US')} shown of ${total.toLocaleString('en-US')} guides to report to Coordinadora (no novelty): red = promise already breached (delivered late or still not delivered past the deadline), yellow = near breach. Closed, returned and WMS-rejected guides are excluded.`;
+  const head = ['Waybill','WMS order','Destination','Destination terminal','Product','Pickup date','Promised (business days)','Deadline','Delivery date','Business days late','Business days left','Status','Coordinadora status','WMS status','History','First reported','Last change','Change'];
+  const parts = ['<thead><tr>'+head.map(h=>`<th>${h}</th>`).join('')+'</tr></thead><tbody>'];
+  for (const r of rows){
+    const cls = r.reportType==='risk' ? 'warn' : 'bad';
+    parts.push(`<tr class="row-${cls}">
+      <td>${esc(r.waybill)}</td><td>${esc(r.packageOrder)}</td><td>${esc(r.destino)}</td><td>${esc(r.termDestino)}</td><td>${esc(r.producto)}</td>
+      <td>${esc(fmtD(r.fechaRecogida))}</td>
+      <td>${r.diasPrometidos!==null?esc(r.diasPrometidos)+(r.aproximado?' *':''):''}</td>
+      <td>${esc(ymd(r.promisedDeadline))}</td>
+      <td>${esc(fmtD(r.fechaEntrega))}</td>
+      <td>${r.reportType==='risk' ? '' : esc(r.businessDaysLate)}</td>
+      <td>${r.reportType==='risk' ? esc(r.businessDaysLeft) : ''}</td>
+      <td>${pill(reportStatus(r),cls)}</td>
+      <td>${esc(r.estadoCoordinadora)}</td><td>${esc(r.estadoWms)}</td>
+      <td>${histPill(r.hist)}</td><td>${esc(r.hist.first)}</td><td>${esc(r.hist.last)}</td><td>${esc(r.hist.change)}</td>
+    </tr>`);
+  }
+  parts.push('</tbody>');
+  document.getElementById('table-rep').innerHTML = parts.join('');
+}
+function refreshRep(){
+  const out = window.__lastResults;
+  if (!out){ renderRep([],0); return; }
+  const q = (getEl('search-rep').value||'').toLowerCase().trim();
+  const tf = getEl('filter-rep-type').value;
+  const hf = getEl('filter-rep-hist').value;
+  const all = getReportList(out);
+  const rows = all.map(r=>Object.assign({}, r, {hist: reportHist(r)})).filter(r=>{
+    if (tf && r.reportType !== tf) return false;
+    if (hf==='recent' && r.hist.state==='Already reported') return false;
+    if (hf==='old' && r.hist.state!=='Already reported') return false;
+    if (q && ![r.waybill,r.packageOrder,r.destino,r.termDestino,r.estadoCoordinadora,r.estadoWms,reportStatus(r)].join(' ').toLowerCase().includes(q)) return false;
+    return true;
+  });
+  renderRep(rows, all.length);
+}
+getEl('search-rep').addEventListener('input', refreshRep);
+getEl('filter-rep-type').addEventListener('change', refreshRep);
+getEl('filter-rep-hist').addEventListener('change', refreshRep);
+
 function refreshAfterHistoryChange(){
   updateHistNote();
-  if (window.__lastResults){ refreshRet(); refreshTrack(); renderSummary(window.__lastResults); }
+  if (window.__lastResults){ refreshRet(); refreshTrack(); refreshRep(); renderSummary(window.__lastResults); }
 }
 getEl('retThreshold').addEventListener('input', ()=>{ refreshRet(); if (window.__lastResults) renderSummary(window.__lastResults); });
 getEl('search-ret').addEventListener('input', refreshRet);
@@ -1404,7 +1564,7 @@ getEl('hist-file').addEventListener('change', async (e)=>{
 });
 getEl('hist-clear').addEventListener('click', ()=>{
   if (!confirm('Clear all saved history? This cannot be undone (export it first if you need a backup).')) return;
-  history = {returns:{}, candidates:{}}; saveHistory(); refreshAfterHistoryChange();
+  history = emptyHistory(); saveHistory(); refreshAfterHistoryChange();
 });
 
 getEl('search-kpi1').addEventListener('input', refreshKpi1);
@@ -1436,11 +1596,13 @@ document.getElementById('dl-kpi1').addEventListener('click', async ()=>{
 
     function statusColor(v){
       if (v==='Compliant' || v==='On time' || v==='Match (delivered)' || (v && v.startsWith('Received'))) return {bg:'C6EFCE', font:'006100'};
+      if (v==='Late due to novelty') return {bg:'FFEB9C', font:'9C6500'};
+      if (v && v.startsWith('At risk')) return {bg:'F8CBAD', font:'833C0B'};
       if (v && (v.startsWith('Non-compliant') || v.startsWith('Late') || v==='Discrepancy')) return {bg:'FFC7CE', font:'9C0006'};
       return {bg:'FFEB9C', font:'9C6500'};
     }
     const HEADER_STYLE = { fill:{patternType:'solid', fgColor:{rgb:'1F3864'}}, font:{color:{rgb:'FFFFFF'}, bold:true} };
-    function styleSheet(ws, nDataRows, nCols, statusColIndex, colorFn){
+    function styleSheet(ws, nDataRows, nCols, statusColIndex, colorFn, wholeRow){
       const colorOf = colorFn || statusColor;
       for (let c=0;c<nCols;c++){
         const hAddr = XLSX.utils.encode_cell({r:0,c});
@@ -1452,6 +1614,14 @@ document.getElementById('dl-kpi1').addEventListener('click', async ()=>{
           if (!ws[addr]) continue;
           const {bg,font} = colorOf(ws[addr].v);
           ws[addr].s = { fill:{patternType:'solid', fgColor:{rgb:bg}}, font:{color:{rgb:font}, bold:true} };
+          if (wholeRow){
+            for (let c=0;c<nCols;c++){
+              if (c===statusColIndex) continue;
+              const a2 = XLSX.utils.encode_cell({r:r+1, c});
+              if (!ws[a2]) ws[a2] = {t:'s', v:''};
+              ws[a2].s = { fill:{patternType:'solid', fgColor:{rgb:bg}}, font:{color:{rgb:font}} };
+            }
+          }
         }
       }
       ws['!autofilter'] = { ref: XLSX.utils.encode_range({s:{r:0,c:0}, e:{r:nDataRows, c:nCols-1}}) };
@@ -1478,9 +1648,10 @@ document.getElementById('dl-kpi1').addEventListener('click', async ()=>{
       'Approximate Promise': r.aproximado ? 'Yes' : 'No', 'Approximation Reason': r.motivoAprox,
       'Result': r.oportunidad, 'Coordinadora Status': r.estadoCoordinadora, 'WMS Status': r.estadoWms,
       'Business Days Late': r.businessDaysLate, 'Novelty (Coordinadora)': r.novedad,
+      'Business Days Left': r.businessDaysLeft,
     }));
     const ws2 = XLSX.utils.json_to_sheet(k2);
-    styleSheet(ws2, k2.length, 18, 13);
+    styleSheet(ws2, k2.length, 19, 13);
     XLSX.utils.book_append_sheet(wb, ws2, 'KPI2 Delivery');
 
     const val = out.validacion.map(r=>({
@@ -1517,6 +1688,28 @@ document.getElementById('dl-kpi1').addEventListener('click', async ()=>{
     const ws5 = XLSX.utils.json_to_sheet(trkRows, {header: TRK_HEADERS});
     styleSheet(ws5, trkRows.length, TRK_HEADERS.length, 8);
     XLSX.utils.book_append_sheet(wb, ws5, 'Returns Tracking');
+
+    const REP_HEADERS = ['Waybill','WMS Order','Destination','Destination Terminal','Product','Pickup Date','Promised (business days)','Deadline','Delivery Date','Business Days Late','Business Days Left','Status','Coordinadora Status','WMS Status','History','First Reported','Last Change','Change'];
+    const repRows = getReportList(out).map(r=>Object.assign({}, r, {hist: reportHist(r)}))
+      .sort((a,b)=> (a.reportType===b.reportType ? 0 : (a.reportType==='breach' ? -1 : 1)) || histRank(a.hist)-histRank(b.hist))
+      .map(r=>({
+        'Waybill': r.waybill, 'WMS Order': r.packageOrder, 'Destination': r.destino, 'Destination Terminal': r.termDestino,
+        'Product': r.producto, 'Pickup Date': fmtD(r.fechaRecogida), 'Promised (business days)': r.diasPrometidos,
+        'Deadline': ymd(r.promisedDeadline), 'Delivery Date': fmtD(r.fechaEntrega),
+        'Business Days Late': r.reportType==='risk' ? '' : r.businessDaysLate,
+        'Business Days Left': r.reportType==='risk' ? r.businessDaysLeft : '',
+        'Status': reportStatus(r), 'Coordinadora Status': r.estadoCoordinadora, 'WMS Status': r.estadoWms,
+        'History': r.hist.state, 'First Reported': r.hist.first, 'Last Change': r.hist.last, 'Change': r.hist.change,
+      }));
+    const wsRep = XLSX.utils.json_to_sheet(repRows, {header: REP_HEADERS});
+    styleSheet(wsRep, repRows.length, REP_HEADERS.length, REP_HEADERS.indexOf('Status'),
+      v => String(v).startsWith('Breached') ? {bg:'FFC7CE', font:'9C0006'} : {bg:'FFEB9C', font:'9C6500'}, true);
+    XLSX.utils.book_append_sheet(wb, wsRep, 'Report to Coordinadora');
+
+    // keep the report sheet right after the first one so it is easy to find
+    const repNames = ['Report to Coordinadora'];
+    const orderNames = wb.SheetNames.slice();
+    wb.SheetNames = [orderNames[0]].concat(repNames, orderNames.filter((n,i)=> i>0 && repNames.indexOf(n)<0));
 
     const wbout = XLSX.write(wb, {bookType:'xlsx', type:'array'});
     const blob = new Blob([wbout], {type:'application/octet-stream'});
