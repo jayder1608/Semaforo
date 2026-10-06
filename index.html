@@ -199,6 +199,8 @@
   .pill.ok { background: var(--good-bg); color: var(--good); }
   .pill.bad { background: var(--bad-bg); color: var(--bad); }
   .pill.warn { background: var(--warn-bg); color: var(--warn); }
+  .pill.neutral { background: var(--line); color: var(--ink-soft); }
+  .histbar { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-top:18px; padding-top:14px; border-top:1px dashed var(--line); }
 
   .tabs { display:flex; gap: 4px; margin-bottom: 14px; border-bottom: 1px solid var(--line); }
   .tab-btn {
@@ -269,6 +271,14 @@
       <button class="primary" id="btnRun" disabled>Process and match</button>
       <div class="runmsg" id="runmsg"></div>
     </div>
+    <div class="histbar">
+      <span class="note" id="hist-note"></span>
+      <label class="note"><input type="checkbox" id="histSave" checked> Save this run to history</label>
+      <button class="secondary" id="hist-export">Export history</button>
+      <button class="secondary" id="hist-import">Import history</button>
+      <button class="secondary" id="hist-clear">Clear history</button>
+      <input type="file" id="hist-file" accept=".json" style="display:none">
+    </div>
   </div>
 
   <div id="resultsSection">
@@ -280,13 +290,15 @@
         <button class="tab-btn active" data-tab="kpi1">KPI 1 · Readiness</button>
         <button class="tab-btn" data-tab="kpi2">KPI 2 · Delivery</button>
         <button class="tab-btn" data-tab="val">Status validation</button>
+        <button class="tab-btn" data-tab="ret">Return candidates</button>
+        <button class="tab-btn" data-tab="track">Returns tracking</button>
       </div>
 
       <div class="tab-panel active" id="tab-kpi1">
         <div class="tablehead-row">
           <span class="note" id="note-kpi1"></span>
           <div style="display:flex; gap:8px;">
-            <button class="secondary" id="dl-kpi1">Download full Excel (3 sheets)</button>
+            <button class="secondary" id="dl-kpi1">Download full Excel (5 sheets)</button>
           </div>
         </div>
         <div class="filterbar">
@@ -317,6 +329,11 @@
             <option value="Not evaluable">Not evaluable</option>
             <option value="Not found in Business Report">Not found in Business Report</option>
           </select>
+          <select id="filter-kpi2-nov">
+            <option value="">Novelty: all</option>
+            <option value="with">With novelty</option>
+            <option value="without">Without novelty</option>
+          </select>
         </div>
         <div class="tablewrap"><table id="table-kpi2"></table></div>
       </div>
@@ -335,6 +352,44 @@
           </select>
         </div>
         <div class="tablewrap"><table id="table-val"></table></div>
+      </div>
+
+      <div class="tab-panel" id="tab-ret">
+        <div class="tablehead-row">
+          <span class="note" id="note-ret"></span>
+          <label class="note">Min. business days late:
+            <input type="number" id="retThreshold" value="10" min="1" style="width:70px; font-family:var(--mono); padding:6px 8px; border:1px solid var(--line); border-radius:2px; background:var(--panel); color:var(--ink);">
+          </label>
+        </div>
+        <div class="filterbar">
+          <input type="text" id="search-ret" placeholder="Search waybill, order, destination, novelty...">
+          <select id="filter-ret-hist">
+            <option value="recent">New + changed only</option>
+            <option value="all">All (incl. already reported)</option>
+            <option value="old">Already reported only</option>
+          </select>
+        </div>
+        <div class="tablewrap"><table id="table-ret"></table></div>
+      </div>
+
+      <div class="tab-panel" id="tab-track">
+        <div class="tablehead-row">
+          <span class="note" id="note-track"></span>
+        </div>
+        <div class="filterbar">
+          <input type="text" id="search-track" placeholder="Search waybill, order, destination...">
+          <select id="filter-track-status">
+            <option value="">All</option>
+            <option value="Pending">Pending — follow up until Inbound</option>
+            <option value="Received">Received in warehouse (Inbound)</option>
+          </select>
+          <select id="filter-track-hist">
+            <option value="recent">New + changed only</option>
+            <option value="all">All (incl. already reported)</option>
+            <option value="old">Already reported only</option>
+          </select>
+        </div>
+        <div class="tablewrap"><table id="table-track"></table></div>
       </div>
     </div>
   </div>
@@ -405,6 +460,27 @@ function addBusinessDays(d, n){
     if (isBusinessDay(result)) remaining--;
   }
   return result;
+}
+function businessDaysBetween(start, end){
+  // business days in the interval (start, end], weekends and holidays excluded
+  let d = toDateOnly(start); const e = toDateOnly(end); let n = 0;
+  while (d < e){
+    d = new Date(d.getTime());
+    d.setDate(d.getDate()+1);
+    if (isBusinessDay(d)) n++;
+  }
+  return n;
+}
+function cleanNov(v){
+  const t = (v===null || v===undefined) ? '' : String(v).trim();
+  return (t==='' || t==='-') ? '' : t;
+}
+function isReturnedStatus(estado){
+  const t = normText(estado);
+  return t.includes('RETORN') || t.includes('DEVUEL');
+}
+function isClosedStatus(estado){
+  return normText(estado).startsWith('CERRADO');
 }
 function parseWmsDateTime(s){
   if(!s || s === '-' || s === '') return null;
@@ -593,6 +669,7 @@ function run(){
   setTimeout(()=>{
     try {
       const out = compute();
+      applyHistory(out);
       renderAll(out);
       runmsg.textContent = 'Done · '+ new Date().toLocaleTimeString('en-US');
       document.getElementById('resultsSection').style.display = 'block';
@@ -671,6 +748,7 @@ function compute(){
       fechaRecogida: get(r,coordCol,'fecharecogida'),
       fechaEntrega: get(r,coordCol,'fechaentrega'),
       estado: get(r,coordCol,'estado'),
+      novedad: cleanNov(get(r,coordCol,'novedad')),
       diasOfrecidos: get(r,coordCol,'diasofrecidos'),
       diasTranscurridos: get(r,coordCol,'diastranscurridos'),
     });
@@ -765,6 +843,7 @@ function compute(){
         fechaRecogida: null, fechaEntrega: null,
         tiempoRealDias: null, diasTranscurridosHoy: null, diasPrometidos: null,
         aproximado: false,
+        novedad: '', packageOrder: w.packageOrder, businessDaysLate: null,
         motivoAprox: "This waybill doesn't appear in Coordinadora's Business Report",
         oportunidad: 'Not found in Business Report',
         estadoCoordinadora: 'Not found in Business Report',
@@ -783,6 +862,11 @@ function compute(){
     // the promised days are business days (Mon-Fri, excluding Colombia 2026 holidays):
     // the real deadline is pickup date + N business days, not a raw calendar-day count.
     const promisedDeadline = (promesa.dias!==null && fRecogida) ? addBusinessDays(fRecogida, promesa.dias) : null;
+    let businessDaysLate = null;
+    if (promisedDeadline){
+      const endRef = fEntrega ? toDateOnly(fEntrega) : toDateOnly(new Date());
+      businessDaysLate = endRef > promisedDeadline ? businessDaysBetween(promisedDeadline, endRef) : 0;
+    }
     if (promisedDeadline && fEntrega){
       oportunidad = (toDateOnly(fEntrega) <= promisedDeadline) ? 'On time' : 'Late (delivered)';
     } else if (!fEntrega){
@@ -814,6 +898,9 @@ function compute(){
       diasTranscurridosHoy,
       diasPrometidos: promesa.dias,
       promisedDeadline,
+      businessDaysLate,
+      novedad: c.novedad,
+      packageOrder: w.packageOrder,
       aproximado: promesa.approx,
       motivoAprox: motivo,
       oportunidad,
@@ -836,7 +923,60 @@ function compute(){
     });
   }
 
-  return { kpi1: wmsC, kpi2, validacion, matched, totalWmsC: wmsC.length, noMatch: wmsC.length - matched };
+  // ---- returns tracking: WMS Rejected / Coordinadora returned or closed by incident, followed until WMS = Inbound ----
+  function returnSignals(wmsStatus, coordEstado){
+    const sig = [];
+    const w = normText(wmsStatus);
+    if (w.includes('REJECT')) sig.push('WMS: Rejected');
+    if (w.includes('INBOUND')) sig.push('WMS: Inbound');
+    if (isReturnedStatus(coordEstado)) sig.push('Coordinadora: returned');
+    if (normText(coordEstado).includes('CERRADO POR INCIDENCIA')) sig.push('Coordinadora: closed by incident');
+    return sig;
+  }
+  const returns = [];
+  const returnKeys = new Set();
+  const seenKeys = new Set();
+  for (const w of wmsC){
+    const c = coordByCode.get(w.waybill);
+    const sig = returnSignals(w.status, c ? c.estado : '');
+    if (!sig.length) continue;
+    const hasWb = !!(w.waybill && w.waybill !== '-');
+    const key = hasWb ? w.waybill : w.packageOrder;
+    if (seenKeys.has(key)) continue;
+    seenKeys.add(key);
+    if (hasWb) returnKeys.add(w.waybill);
+    const inbound = normText(w.status).includes('INBOUND');
+    returns.push({
+      key,
+      waybill: hasWb ? w.waybill : '',
+      packageOrder: w.packageOrder,
+      destino: c ? c.destino : w.city,
+      producto: c ? c.producto : w.productName,
+      fechaRecogida: (c && c.fechaRecogida instanceof Date) ? c.fechaRecogida : null,
+      estadoCoordinadora: c ? c.estado : 'Not found in Business Report',
+      novedad: c ? c.novedad : '',
+      estadoWms: w.status,
+      inInbound: inbound,
+      signals: sig.join(' + '),
+      trackingStatus: inbound ? 'Received in warehouse (Inbound)' : 'Pending — follow up until Inbound',
+    });
+  }
+  for (const [code, c] of coordByCode){
+    if (seenKeys.has(code)) continue;
+    const sig = returnSignals('', c.estado);
+    if (!sig.length) continue;
+    seenKeys.add(code);
+    returnKeys.add(code);
+    returns.push({
+      key: code, waybill: code, packageOrder: '', destino: c.destino, producto: c.producto,
+      fechaRecogida: c.fechaRecogida instanceof Date ? c.fechaRecogida : null,
+      estadoCoordinadora: c.estado, novedad: c.novedad, estadoWms: 'Not found in WMS report',
+      inInbound: false, signals: sig.join(' + '), trackingStatus: 'Pending — follow up until Inbound',
+    });
+  }
+  returns.sort((a,b)=> (a.inInbound===b.inInbound) ? 0 : (a.inInbound ? 1 : -1));
+
+  return { kpi1: wmsC, kpi2, validacion, returns, returnKeys, matched, totalWmsC: wmsC.length, noMatch: wmsC.length - matched };
 }
 
 // ---------- rendering ----------
@@ -858,6 +998,8 @@ function renderAll(out){
   renderSummary(out);
   refreshKpi1();
   refreshKpi2();
+  refreshRet();
+  refreshTrack();
 }
 
 function renderSummary(out){
@@ -872,6 +1014,14 @@ function renderSummary(out){
   const tardias = evaluablesKpi2.filter(r=>r.oportunidad.startsWith('Late')).length;
   const pctOportuna = evaluablesKpi2.length ? Math.round(1000*oportunas/evaluablesKpi2.length)/10 : 0;
   const aproximados = out.kpi2.filter(r=>r.aproximado).length;
+  const retTh = getRetThreshold();
+  const candList = getReturnCandidates(out);
+  const retCand = candList.length;
+  const retCandNew = candList.filter(r=>histInfo('candidates', r.waybill, snapCand(r)).state!=='Already reported').length;
+  const pendList = out.returns.filter(r=>!r.inInbound);
+  const retPending = pendList.length;
+  const retPendNew = pendList.filter(r=>histInfo('returns', r.key, snapRet(r)).state!=='Already reported').length;
+  const retInbound = out.returns.length - retPending;
 
   const html = `
     <div class="card ${pctCumple>=90?'good':(pctCumple<75?'bad':'')}">
@@ -893,6 +1043,16 @@ function renderSummary(out){
       <div class="label">Status validation</div>
       <div class="big">${out.validacion.filter(r=>r.statusMatch==='Discrepancy').length.toLocaleString('en-US')}</div>
       <div class="detail">discrepancies out of ${out.validacion.length.toLocaleString('en-US')} matched orders compared</div>
+    </div>
+    <div class="card ${retCand>0?'bad':'good'}">
+      <div class="label">Return-to-warehouse candidates</div>
+      <div class="big">${retCand.toLocaleString('en-US')}</div>
+      <div class="detail">undelivered, ≥ ${retTh} business days past their deadline · ${retCandNew.toLocaleString('en-US')} new/changed</div>
+    </div>
+    <div class="card ${retPending>0?'bad':'good'}">
+      <div class="label">Returns pending Inbound</div>
+      <div class="big">${retPending.toLocaleString('en-US')}</div>
+      <div class="detail">${out.returns.length.toLocaleString('en-US')} returned · ${retInbound.toLocaleString('en-US')} already Inbound · ${retPendNew.toLocaleString('en-US')} pending new/changed</div>
     </div>
   `;
   document.getElementById('summaryCards').innerHTML = html;
@@ -926,7 +1086,7 @@ function renderKpi1(rows){
 function renderKpi2(rows){
   document.getElementById('note-kpi2').textContent =
     `${rows.length.toLocaleString('en-US')} Coordinadora B2C orders in WMS · * = approximate promise`;
-  const head = ['Waybill','Product','Population type','Destination','Destination terminal','Pickup date','Delivery date','Actual days (calendar)','Promised (business days)','Deadline (business days)','Result','Reason','Coordinadora status','WMS status'];
+  const head = ['Waybill','Product','Population type','Destination','Destination terminal','Pickup date','Delivery date','Actual days (calendar)','Promised (business days)','Deadline (business days)','Business days late','Result','Reason','Novelty (Coordinadora)','Coordinadora status','WMS status'];
   const parts = ['<thead><tr>'+head.map(h=>`<th>${h}</th>`).join('')+'</tr></thead><tbody>'];
   for (const r of rows){
     const cls = r.oportunidad==='On time'?'ok':(r.oportunidad.startsWith('Late')?'bad':'warn');
@@ -941,8 +1101,10 @@ function renderKpi2(rows){
       <td>${r.tiempoRealDias!==null?esc(r.tiempoRealDias):''}</td>
       <td>${r.diasPrometidos!==null?esc(r.diasPrometidos)+(r.aproximado?' *':''):''}</td>
       <td>${esc(ymd(r.promisedDeadline))}</td>
+      <td>${r.businessDaysLate!==null?esc(r.businessDaysLate):''}</td>
       <td>${pill(r.oportunidad,cls)}</td>
       <td>${esc(r.motivoAprox)}</td>
+      <td>${esc(r.novedad)}</td>
       <td>${esc(r.estadoCoordinadora)}</td>
       <td>${esc(r.estadoWms)}</td>
     </tr>`);
@@ -989,10 +1151,13 @@ function refreshKpi2(){
   if (!out){ renderKpi2([]); return; }
   const q = (getEl('search-kpi2').value||'').toLowerCase().trim();
   const st = getEl('filter-kpi2-status').value;
+  const nv = getEl('filter-kpi2-nov').value;
   const rows = out.kpi2.filter(r=>{
     if (st && r.oportunidad !== st) return false;
+    if (nv==='with' && !r.novedad) return false;
+    if (nv==='without' && r.novedad) return false;
     if (q){
-      const hay = [r.waybill,r.producto,r.destino,r.termDestino,r.tipoPoblacion].join(' ').toLowerCase();
+      const hay = [r.waybill,r.producto,r.destino,r.termDestino,r.tipoPoblacion,r.novedad].join(' ').toLowerCase();
       if (!hay.includes(q)) return false;
     }
     return true;
@@ -1015,6 +1180,232 @@ function refreshVal(){
   });
   renderVal(rows, out.matched);
 }
+
+// ---------- history (saved in this browser; exportable / importable) ----------
+const HIST_KEY = 'coordinadoraKpiHistoryV1';
+let history = {returns:{}, candidates:{}};
+let storageOk = true;
+function todayStr(){ return ymd(new Date()); }
+function loadHistory(){
+  try{
+    const t = window.localStorage.getItem(HIST_KEY);
+    if (t){ const h = JSON.parse(t); if (h && h.returns && h.candidates) history = h; }
+  }catch(e){ storageOk = false; }
+}
+function saveHistory(){
+  try{ window.localStorage.setItem(HIST_KEY, JSON.stringify(history)); }catch(e){ storageOk = false; }
+}
+function describeSnap(s){
+  if (!s) return '';
+  return `Coordinadora: ${s.coord||'—'} · WMS: ${s.wms||'—'}` + (s.novedad ? ` · Novelty: ${s.novedad}` : '');
+}
+function snapCand(r){ return {coord:String(r.estadoCoordinadora||''), wms:String(r.estadoWms||''), novedad:String(r.novedad||'')}; }
+function snapRet(r){ return {coord:String(r.estadoCoordinadora||''), wms:String(r.estadoWms||''), novedad:String(r.novedad||''), tracking:String(r.trackingStatus||'')}; }
+function histInfo(type, key, snap){
+  const t = todayStr();
+  const rec = history[type][key];
+  if (!rec) return {state:'New', first:t, last:t, change:''};
+  const changed = JSON.stringify(rec.snap) !== JSON.stringify(snap);
+  if (rec.firstSeen === t && !changed) return {state:'New', first:rec.firstSeen, last:rec.lastChange, change:''};
+  if (changed){
+    return {state:'Changed', first:rec.firstSeen, last:t, change: describeSnap(rec.snap)+'  →  '+describeSnap(snap)};
+  }
+  if (rec.lastChange === t){
+    const lg = rec.log[rec.log.length-1];
+    return {state:'Changed', first:rec.firstSeen, last:rec.lastChange, change: lg && lg.from ? describeSnap(lg.from)+'  →  '+describeSnap(lg.to) : ''};
+  }
+  return {state:'Already reported', first:rec.firstSeen, last:rec.lastChange, change:''};
+}
+function upsertHistory(type, key, snap){
+  const t = todayStr();
+  const sig = JSON.stringify(snap);
+  const rec = history[type][key];
+  if (!rec){
+    history[type][key] = {firstSeen:t, lastSeen:t, lastChange:t, snap, log:[{date:t, from:null, to:snap}]};
+  } else {
+    rec.lastSeen = t;
+    if (JSON.stringify(rec.snap) !== sig){
+      rec.log.push({date:t, from:rec.snap, to:snap});
+      if (rec.log.length > 30) rec.log = rec.log.slice(-30);
+      rec.snap = snap;
+      rec.lastChange = t;
+    }
+  }
+}
+function applyHistory(out){
+  const chk = document.getElementById('histSave');
+  if (chk && !chk.checked) return;
+  for (const r of out.returns) upsertHistory('returns', r.key, snapRet(r));
+  for (const r of getReturnCandidates(out)) upsertHistory('candidates', r.waybill, snapCand(r));
+  saveHistory();
+  updateHistNote();
+}
+function updateHistNote(){
+  const n1 = Object.keys(history.returns).length, n2 = Object.keys(history.candidates).length;
+  getEl('hist-note').textContent = `History: ${n1} returned guides · ${n2} candidates tracked` + (storageOk ? '' : ' · browser storage unavailable (use Export/Import to keep it)');
+}
+function mergeHistory(h){
+  if (!h || typeof h !== 'object' || !h.returns || !h.candidates) throw new Error('Not a valid history file');
+  for (const type of ['returns','candidates']){
+    for (const [k, rec] of Object.entries(h[type])){
+      if (!rec || typeof rec.firstSeen !== 'string' || typeof rec.lastSeen !== 'string' || !Array.isArray(rec.log)) continue;
+      const cur = history[type][k];
+      if (!cur || rec.lastSeen > cur.lastSeen || (rec.lastSeen === cur.lastSeen && rec.lastChange > cur.lastChange)) history[type][k] = rec;
+    }
+  }
+}
+
+// ---------- return candidates (>= N business days late, not delivered) ----------
+function getRetThreshold(){
+  const el = document.getElementById('retThreshold');
+  const n = el ? parseInt(el.value,10) : 10;
+  return (isNaN(n) || n < 1) ? 10 : n;
+}
+function getReturnCandidates(out){
+  const th = getRetThreshold();
+  return out.kpi2
+    .filter(r => r.fechaEntrega===null && r.promisedDeadline && r.businessDaysLate!==null && r.businessDaysLate >= th
+              && !out.returnKeys.has(r.waybill)
+              && !isReturnedStatus(r.estadoCoordinadora) && !isClosedStatus(r.estadoCoordinadora)
+              && normText(r.estadoCoordinadora)!=='ENTREGADA')
+    .sort((a,b)=> b.businessDaysLate - a.businessDaysLate)
+    .reduce((acc, r)=>{
+      // several WMS orders can share one waybill: list each guide once, with all its orders
+      const prev = acc.map.get(r.waybill);
+      if (!prev){ const copy = Object.assign({}, r); acc.map.set(r.waybill, copy); acc.list.push(copy); }
+      else if (r.packageOrder && !String(prev.packageOrder||'').split(', ').includes(String(r.packageOrder))){
+        prev.packageOrder = prev.packageOrder ? prev.packageOrder+', '+r.packageOrder : r.packageOrder;
+      }
+      return acc;
+    }, {map:new Map(), list:[]}).list;
+}
+function histPill(h){ return pill(h.state, h.state==='Already reported' ? 'neutral' : 'warn'); }
+function renderRet(rows, total){
+  const th = getRetThreshold();
+  document.getElementById('note-ret').textContent =
+    `${rows.length.toLocaleString('en-US')} shown of ${total.toLocaleString('en-US')} undelivered guides with ≥ ${th} business days past their deadline (weekends/holidays excluded). Closed, returned and WMS-rejected guides are excluded.`;
+  const head = ['Waybill','WMS order','Destination','Destination terminal','Product','Pickup date','Promised (business days)','Deadline','Business days late','Coordinadora status','Novelty (Coordinadora)','WMS status','Action','History','First reported','Last change','Change'];
+  const parts = ['<thead><tr>'+head.map(h=>`<th>${h}</th>`).join('')+'</tr></thead><tbody>'];
+  for (const r of rows){
+    parts.push(`<tr class="row-bad">
+      <td>${esc(r.waybill)}</td>
+      <td>${esc(r.packageOrder)}</td>
+      <td>${esc(r.destino)}</td>
+      <td>${esc(r.termDestino)}</td>
+      <td>${esc(r.producto)}</td>
+      <td>${esc(fmtD(r.fechaRecogida))}</td>
+      <td>${r.diasPrometidos!==null?esc(r.diasPrometidos)+(r.aproximado?' *':''):''}</td>
+      <td>${esc(ymd(r.promisedDeadline))}</td>
+      <td>${esc(r.businessDaysLate)}</td>
+      <td>${esc(r.estadoCoordinadora)}</td>
+      <td>${esc(r.novedad)}</td>
+      <td>${esc(r.estadoWms)}</td>
+      <td>${pill('Request return to warehouse','bad')}</td>
+      <td>${histPill(r.hist)}</td>
+      <td>${esc(r.hist.first)}</td>
+      <td>${esc(r.hist.last)}</td>
+      <td>${esc(r.hist.change)}</td>
+    </tr>`);
+  }
+  parts.push('</tbody>');
+  document.getElementById('table-ret').innerHTML = parts.join('');
+}
+function refreshRet(){
+  const out = window.__lastResults;
+  if (!out){ renderRet([],0); return; }
+  const q = (getEl('search-ret').value||'').toLowerCase().trim();
+  const hf = getEl('filter-ret-hist').value;
+  const all = getReturnCandidates(out);
+  const rows = all.map(r=>Object.assign({}, r, {hist: histInfo('candidates', r.waybill, snapCand(r))})).filter(r=>{
+    if (hf==='recent' && r.hist.state==='Already reported') return false;
+    if (hf==='old' && r.hist.state!=='Already reported') return false;
+    if (q && ![r.waybill,r.packageOrder,r.destino,r.termDestino,r.novedad].join(' ').toLowerCase().includes(q)) return false;
+    return true;
+  });
+  renderRet(rows, all.length);
+}
+
+// ---------- returns tracking (returned to warehouse, followed until WMS = Inbound) ----------
+function renderTrack(rows, total){
+  const pend = rows.filter(r=>!r.inInbound).length;
+  document.getElementById('note-track').textContent =
+    `${rows.length.toLocaleString('en-US')} shown (${pend.toLocaleString('en-US')} pending Inbound) out of ${total.toLocaleString('en-US')} returned guides detected (WMS Rejected, or Coordinadora returned / closed by incident)`;
+  const head = ['Waybill','WMS order','Destination','Product','Pickup date','Coordinadora status','Novelty (Coordinadora)','WMS status','Return signal','Tracking','History','First reported','Last change','Change'];
+  const parts = ['<thead><tr>'+head.map(h=>`<th>${h}</th>`).join('')+'</tr></thead><tbody>'];
+  for (const r of rows){
+    const cls = r.inInbound ? 'ok' : 'warn';
+    parts.push(`<tr class="row-${cls}">
+      <td>${esc(r.waybill)}</td>
+      <td>${esc(r.packageOrder)}</td>
+      <td>${esc(r.destino)}</td>
+      <td>${esc(r.producto)}</td>
+      <td>${esc(fmtD(r.fechaRecogida))}</td>
+      <td>${esc(r.estadoCoordinadora)}</td>
+      <td>${esc(r.novedad)}</td>
+      <td>${esc(r.estadoWms)}</td>
+      <td>${esc(r.signals)}</td>
+      <td>${pill(r.trackingStatus,cls)}</td>
+      <td>${histPill(r.hist)}</td>
+      <td>${esc(r.hist.first)}</td>
+      <td>${esc(r.hist.last)}</td>
+      <td>${esc(r.hist.change)}</td>
+    </tr>`);
+  }
+  parts.push('</tbody>');
+  document.getElementById('table-track').innerHTML = parts.join('');
+}
+function refreshTrack(){
+  const out = window.__lastResults;
+  if (!out){ renderTrack([],0); return; }
+  const q = (getEl('search-track').value||'').toLowerCase().trim();
+  const st = getEl('filter-track-status').value;
+  const hf = getEl('filter-track-hist').value;
+  const rows = out.returns.map(r=>Object.assign({}, r, {hist: histInfo('returns', r.key, snapRet(r))})).filter(r=>{
+    if (st==='Pending' && r.inInbound) return false;
+    if (st==='Received' && !r.inInbound) return false;
+    if (hf==='recent' && r.hist.state==='Already reported') return false;
+    if (hf==='old' && r.hist.state!=='Already reported') return false;
+    if (q && ![r.waybill,r.packageOrder,r.destino,r.estadoWms,r.estadoCoordinadora,r.signals].join(' ').toLowerCase().includes(q)) return false;
+    return true;
+  });
+  renderTrack(rows, out.returns.length);
+}
+function refreshAfterHistoryChange(){
+  updateHistNote();
+  if (window.__lastResults){ refreshRet(); refreshTrack(); renderSummary(window.__lastResults); }
+}
+getEl('retThreshold').addEventListener('input', ()=>{ refreshRet(); if (window.__lastResults) renderSummary(window.__lastResults); });
+getEl('search-ret').addEventListener('input', refreshRet);
+getEl('filter-ret-hist').addEventListener('change', refreshRet);
+getEl('search-track').addEventListener('input', refreshTrack);
+getEl('filter-track-status').addEventListener('change', refreshTrack);
+getEl('filter-track-hist').addEventListener('change', refreshTrack);
+getEl('filter-kpi2-nov').addEventListener('change', refreshKpi2);
+
+loadHistory();
+updateHistNote();
+getEl('hist-export').addEventListener('click', ()=>{
+  const blob = new Blob([JSON.stringify(history)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'coordinadora_kpi_history.json';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url), 2000);
+});
+getEl('hist-import').addEventListener('click', ()=>getEl('hist-file').click());
+getEl('hist-file').addEventListener('change', async (e)=>{
+  const f = e.target.files[0]; if (!f) return;
+  try{
+    const h = JSON.parse(await f.text());
+    mergeHistory(h); saveHistory(); refreshAfterHistoryChange();
+    alert('History imported.');
+  }catch(err){ alert('Could not import history: '+err.message); }
+  e.target.value = '';
+});
+getEl('hist-clear').addEventListener('click', ()=>{
+  if (!confirm('Clear all saved history? This cannot be undone (export it first if you need a backup).')) return;
+  history = {returns:{}, candidates:{}}; saveHistory(); refreshAfterHistoryChange();
+});
 
 getEl('search-kpi1').addEventListener('input', refreshKpi1);
 getEl('filter-kpi1-status').addEventListener('change', refreshKpi1);
@@ -1044,12 +1435,13 @@ document.getElementById('dl-kpi1').addEventListener('click', async ()=>{
     const wb = XLSX.utils.book_new();
 
     function statusColor(v){
-      if (v==='Compliant' || v==='On time' || v==='Match (delivered)') return {bg:'C6EFCE', font:'006100'};
+      if (v==='Compliant' || v==='On time' || v==='Match (delivered)' || (v && v.startsWith('Received'))) return {bg:'C6EFCE', font:'006100'};
       if (v && (v.startsWith('Non-compliant') || v.startsWith('Late') || v==='Discrepancy')) return {bg:'FFC7CE', font:'9C0006'};
       return {bg:'FFEB9C', font:'9C6500'};
     }
     const HEADER_STYLE = { fill:{patternType:'solid', fgColor:{rgb:'1F3864'}}, font:{color:{rgb:'FFFFFF'}, bold:true} };
-    function styleSheet(ws, nDataRows, nCols, statusColIndex){
+    function styleSheet(ws, nDataRows, nCols, statusColIndex, colorFn){
+      const colorOf = colorFn || statusColor;
       for (let c=0;c<nCols;c++){
         const hAddr = XLSX.utils.encode_cell({r:0,c});
         if (ws[hAddr]) ws[hAddr].s = HEADER_STYLE;
@@ -1058,7 +1450,7 @@ document.getElementById('dl-kpi1').addEventListener('click', async ()=>{
         for (let r=0;r<nDataRows;r++){
           const addr = XLSX.utils.encode_cell({r:r+1, c:statusColIndex});
           if (!ws[addr]) continue;
-          const {bg,font} = statusColor(ws[addr].v);
+          const {bg,font} = colorOf(ws[addr].v);
           ws[addr].s = { fill:{patternType:'solid', fgColor:{rgb:bg}}, font:{color:{rgb:font}, bold:true} };
         }
       }
@@ -1085,9 +1477,10 @@ document.getElementById('dl-kpi1').addEventListener('click', async ()=>{
       'Promised (business days)': r.diasPrometidos, 'Deadline (business days, weekends/holidays excluded)': ymd(r.promisedDeadline),
       'Approximate Promise': r.aproximado ? 'Yes' : 'No', 'Approximation Reason': r.motivoAprox,
       'Result': r.oportunidad, 'Coordinadora Status': r.estadoCoordinadora, 'WMS Status': r.estadoWms,
+      'Business Days Late': r.businessDaysLate, 'Novelty (Coordinadora)': r.novedad,
     }));
     const ws2 = XLSX.utils.json_to_sheet(k2);
-    styleSheet(ws2, k2.length, 16, 13);
+    styleSheet(ws2, k2.length, 18, 13);
     XLSX.utils.book_append_sheet(wb, ws2, 'KPI2 Delivery');
 
     const val = out.validacion.map(r=>({
@@ -1097,6 +1490,33 @@ document.getElementById('dl-kpi1').addEventListener('click', async ()=>{
     const ws3 = XLSX.utils.json_to_sheet(val);
     styleSheet(ws3, val.length, 5, 4);
     XLSX.utils.book_append_sheet(wb, ws3, 'Status Validation');
+
+    const histRank = h => h.state==='Already reported' ? 1 : 0;
+    const RET_HEADERS = ['Waybill','WMS Order','Destination','Destination Terminal','Product','Pickup Date','Promised (business days)','Deadline','Business Days Late','Coordinadora Status','Novelty (Coordinadora)','WMS Status','Action','History','First Reported','Last Change','Change'];
+    const retRows = getReturnCandidates(out).map(r=>Object.assign({}, r, {hist: histInfo('candidates', r.waybill, snapCand(r))}))
+      .sort((a,b)=> histRank(a.hist)-histRank(b.hist)).map(r=>({
+      'Waybill': r.waybill, 'WMS Order': r.packageOrder, 'Destination': r.destino, 'Destination Terminal': r.termDestino,
+      'Product': r.producto, 'Pickup Date': fmtD(r.fechaRecogida), 'Promised (business days)': r.diasPrometidos,
+      'Deadline': ymd(r.promisedDeadline), 'Business Days Late': r.businessDaysLate,
+      'Coordinadora Status': r.estadoCoordinadora, 'Novelty (Coordinadora)': r.novedad, 'WMS Status': r.estadoWms,
+      'Action': 'Request return to warehouse',
+      'History': r.hist.state, 'First Reported': r.hist.first, 'Last Change': r.hist.last, 'Change': r.hist.change,
+    }));
+    const ws4 = XLSX.utils.json_to_sheet(retRows, {header: RET_HEADERS});
+    styleSheet(ws4, retRows.length, RET_HEADERS.length, 12, ()=>({bg:'FFC7CE', font:'9C0006'}));
+    XLSX.utils.book_append_sheet(wb, ws4, 'Return Candidates');
+
+    const TRK_HEADERS = ['Waybill','WMS Order','Destination','Product','Pickup Date','Coordinadora Status','Novelty (Coordinadora)','WMS Status','Tracking','Return Signal','History','First Reported','Last Change','Change'];
+    const trkRows = out.returns.map(r=>Object.assign({}, r, {hist: histInfo('returns', r.key, snapRet(r))}))
+      .sort((a,b)=> histRank(a.hist)-histRank(b.hist)).map(r=>({
+      'Waybill': r.waybill, 'WMS Order': r.packageOrder, 'Destination': r.destino, 'Product': r.producto,
+      'Pickup Date': fmtD(r.fechaRecogida), 'Coordinadora Status': r.estadoCoordinadora,
+      'Novelty (Coordinadora)': r.novedad, 'WMS Status': r.estadoWms, 'Tracking': r.trackingStatus,
+      'Return Signal': r.signals, 'History': r.hist.state, 'First Reported': r.hist.first, 'Last Change': r.hist.last, 'Change': r.hist.change,
+    }));
+    const ws5 = XLSX.utils.json_to_sheet(trkRows, {header: TRK_HEADERS});
+    styleSheet(ws5, trkRows.length, TRK_HEADERS.length, 8);
+    XLSX.utils.book_append_sheet(wb, ws5, 'Returns Tracking');
 
     const wbout = XLSX.write(wb, {bookType:'xlsx', type:'array'});
     const blob = new Blob([wbout], {type:'application/octet-stream'});
